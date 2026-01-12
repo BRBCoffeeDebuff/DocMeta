@@ -1,0 +1,41 @@
+{
+  "v": 3,
+  "purpose": "Test suite for DocMeta functionality. Comprehensive unit tests for all CLI commands and core features.",
+  "files": {},
+  "history": [
+    [
+      "2026-01-12T13:56:39.054Z",
+      "Sync: removed 9 file(s)",
+      [
+        "config.test.js",
+        "check.test.js",
+        "cli.test.js",
+        "crawl.test.js",
+        "graph.test.js",
+        "ignores.test.js",
+        "init.test.js",
+        "update.test.js",
+        "usedby.test.js"
+      ]
+    ],
+    [
+      "2026-01-12T13:56:35.677Z",
+      "Modified test cases for configuration module",
+      [
+        "config.test.js"
+      ]
+    ],
+    [
+      "2026-01-12T13:47:54.141Z",
+      "Added tests for loadPathAliases and resolvePathAlias functions",
+      [
+        "config.test.js"
+      ]
+    ],
+    [
+      "2026-01-12T13:45:00.000Z",
+      "Initialized test directory documentation with all test files"
+    ]
+  ],
+  "updated": "2026-01-12T13:59:14.272Z"
+}

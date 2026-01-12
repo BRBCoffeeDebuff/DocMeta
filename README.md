@@ -156,25 +156,75 @@ You know exactly what breaks if you change this file. The `docmeta graph --blast
 
 ## Language Support
 
-DocMeta works with any language. The CLI auto-detects imports/exports for:
-- TypeScript/JavaScript
-- Python
-- Go
-- Rust
+DocMeta is optimized for **TypeScript/JavaScript** with full feature support. Other languages have basic support with scaffolding.
 
-For other languages, scaffolds are created and Claude fills in the details.
+### Feature Support by Language
+
+| Feature | TypeScript/JS | Python | Go | Rust | Others |
+|---------|:-------------:|:------:|:--:|:----:|:------:|
+| Export detection | ✅ Full | ✅ Basic | ✅ Basic | ✅ Basic | ❌ Manual |
+| Import detection | ✅ Full | ⚠️ Relative only | ⚠️ Internal only | ✅ Basic | ❌ Manual |
+| HTTP calls (`calls`/`calledBy`) | ✅ Full | ❌ | ❌ | ❌ | ❌ |
+| Path aliases (tsconfig.json) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `usedBy` resolution | ✅ | ✅ | ✅ | ✅ | ❌ Manual |
+
+### TypeScript/JavaScript (Full Support)
+
+- **Exports:** Named exports, default exports, re-exports, type exports
+- **Imports:** ES modules, CommonJS require, dynamic imports
+- **HTTP calls:** fetch, axios, useSWR, useQuery patterns
+- **Path aliases:** Reads from `tsconfig.json`/`jsconfig.json` (defaults: `@/`, `~/`)
+
+### Python (Basic Support)
+
+- **Exports:** `__all__` declarations, public functions/classes (no underscore prefix)
+- **Imports:** Relative imports only (e.g., `from .module import`)
+- **Limitations:** Absolute imports not tracked, HTTP calls not detected
+
+### Go (Basic Support)
+
+- **Exports:** Public identifiers (capitalized names)
+- **Imports:** Internal package imports (not standard library)
+- **Limitations:** Module path detection is simplified, HTTP calls not detected
+
+### Rust (Basic Support)
+
+- **Exports:** `pub` items (functions, structs, enums, traits, modules)
+- **Imports:** `crate::`, `super::`, `self::` paths, mod declarations
+- **Limitations:** External crate usage not tracked, HTTP calls not detected
+
+### Other Languages
+
+Scaffolds are created with empty `exports` and `uses` arrays. Fill these in manually or let Claude Code populate them as it works with your code.
 
 ### TypeScript Path Aliases
 
-DocMeta supports common TypeScript path aliases out of the box:
+DocMeta automatically reads path aliases from `tsconfig.json` or `jsconfig.json`:
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@components/*": ["./src/components/*"],
+      "@utils/*": ["./src/utils/*"]
+    }
+  }
+}
+```
+
+**Default aliases** (always available, even without tsconfig):
 - `@/` → project root (e.g., `@/lib/auth` → `/lib/auth.ts`)
 - `~/` → project root (e.g., `~/utils` → `/utils/index.ts`)
 
-**Limitation:** DocMeta does not read `tsconfig.json`. Custom path mappings like `@components/*` or non-root `baseUrl` settings are not automatically resolved. Files using custom aliases will show as unresolved imports.
+**Custom aliases** are loaded from your tsconfig.json/jsconfig.json `compilerOptions.paths` configuration. The CLI will report loaded aliases:
 
-For projects with custom aliases, you can:
-1. Use the standard `@/` convention pointing to project root
-2. Manually update the `uses`/`usedBy` fields for files with custom aliases
+```
+📦 Loaded 5 path aliases from tsconfig.json/jsconfig.json
+   Custom: @components/*, @utils/*, @hooks/*
+```
 
 ## MCP Integration
 

@@ -151,6 +151,27 @@
   },
   "history": [
     [
+      "2026-01-12T13:59:08.964Z",
+      "Added hook installation functionality: PROJECT_SETTINGS_PATH constant, DOCMETA_HOOKS object with PostToolUse and Stop hooks, installHooks() function, and integrated hook installation into setup workflows",
+      [
+        "setup.js"
+      ]
+    ],
+    [
+      "2026-01-12T13:56:35.407Z",
+      "Updated dependency graph rebuild logic",
+      [
+        "usedby.js"
+      ]
+    ],
+    [
+      "2026-01-12T13:56:34.866Z",
+      "Updated to handle initialization logic for new code detection",
+      [
+        "init.js"
+      ]
+    ],
+    [
       "2026-01-12T06:15:00.000Z",
       "Added calls/calledBy for HTTP API dependencies: init.js extracts fetch/axios calls, calls.js resolves them to route files, graph.js considers calledBy in reachability analysis",
       [
@@ -202,42 +223,7 @@
       [
         "graph.js"
       ]
-    ],
-    [
-      "2026-01-12T04:05:31.144Z",
-      "Added Go and Rust import/export support: extractGoExports/Imports for uppercase exports and internal packages, extractRustExports/Imports for pub items and crate:: references",
-      [
-        "init.js"
-      ]
-    ],
-    [
-      "2026-01-12T03:47:04.359Z",
-      "Replaced static MCP_CONFIG with getMcpConfig() function that detects local mcp-server.js and uses absolute path with node command, falls back to npx for published package",
-      [
-        "setup.js"
-      ]
-    ],
-    [
-      "2026-01-12T03:43:10.547Z",
-      "Added CLAUDE.md installation functionality with installClaudeMd() function, CLAUDE_MD_PATH constant, and integration into setup flows",
-      [
-        "setup.js"
-      ]
-    ],
-    [
-      "2026-01-11T23:26:47.598Z",
-      "Sync: refreshed 8 file(s)",
-      [
-        "cli.js",
-        "crawl.js",
-        "ignore.js",
-        "init.js",
-        "mcp-server.js",
-        "registry.js",
-        "setup.js",
-        "update.js"
-      ]
     ]
   ],
-  "updated": "2026-01-12T04:56:20.688Z"
+  "updated": "2026-01-12T13:59:14.272Z"
 }

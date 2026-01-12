@@ -1,6 +1,6 @@
 {
   "name": "@brbcoffeedebuff/docmeta",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Living documentation for AI-assisted coding. Helps Claude Code understand your codebase faster.",
   "keywords": [
     "claude",

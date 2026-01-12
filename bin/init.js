@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, addHistoryEntry } = require('./lib/config');
+const { loadConfig, addHistoryEntry, loadPathAliases } = require('./lib/config');
 
 // Configuration - now loaded from shared config
 const CONFIG = {
@@ -98,19 +98,40 @@ function extractJSExports(content) {
 }
 
 /**
- * Extract internal imports from JavaScript/TypeScript file
+ * Check if an import path matches any configured alias
  */
-function extractJSImports(content) {
+function isInternalImport(importPath, aliases) {
+  // Relative imports are always internal
+  if (importPath.startsWith('.')) return true;
+
+  // Check if it matches any alias pattern
+  for (const pattern of Object.keys(aliases)) {
+    const isWildcard = pattern.endsWith('/*');
+    const patternBase = isWildcard ? pattern.slice(0, -2) : pattern;
+
+    if (isWildcard) {
+      if (importPath.startsWith(patternBase + '/')) return true;
+    } else {
+      if (importPath === patternBase) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Extract internal imports from JavaScript/TypeScript file
+ * Uses tsconfig.json/jsconfig.json path aliases when available
+ */
+function extractJSImports(content, aliases = {}) {
   const imports = new Set();
 
   // import ... from 'path'
   const importMatches = content.matchAll(/from\s+['"]([^'"]+)['"]/g);
   for (const match of importMatches) {
     const importPath = match[1];
-    // Only internal imports (relative, @/, ~/)
-    if (importPath.startsWith('.') ||
-        importPath.startsWith('@/') ||
-        importPath.startsWith('~/')) {
+    // Only internal imports (relative or matching an alias)
+    if (isInternalImport(importPath, aliases)) {
       imports.add(importPath);
     }
   }
@@ -119,9 +140,7 @@ function extractJSImports(content) {
   const requireMatches = content.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
   for (const match of requireMatches) {
     const importPath = match[1];
-    if (importPath.startsWith('.') ||
-        importPath.startsWith('@/') ||
-        importPath.startsWith('~/')) {
+    if (isInternalImport(importPath, aliases)) {
       imports.add(importPath);
     }
   }
@@ -416,8 +435,10 @@ function extractRustImports(content) {
 
 /**
  * Analyze a file and extract metadata
+ * @param {string} filePath - Path to file
+ * @param {Object} aliases - Path aliases from tsconfig.json/jsconfig.json
  */
-function analyzeFile(filePath) {
+function analyzeFile(filePath, aliases = {}) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     const ext = path.extname(filePath);
@@ -429,7 +450,7 @@ function analyzeFile(filePath) {
 
     if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
       exports = extractJSExports(content);
-      uses = extractJSImports(content);
+      uses = extractJSImports(content, aliases);
       calls = extractJSCalls(content);
     } else if (['.py', '.pyw'].includes(ext)) {
       exports = extractPythonExports(content);
@@ -451,8 +472,12 @@ function analyzeFile(filePath) {
 
 /**
  * Create a .docmeta.json structure for a directory
+ * @param {string} dir - Directory to document
+ * @param {string} rootPath - Project root
+ * @param {Object} config - DocMeta configuration
+ * @param {Object} aliases - Path aliases from tsconfig.json/jsconfig.json
  */
-function createDocMeta(dir, rootPath, config) {
+function createDocMeta(dir, rootPath, config, aliases = {}) {
   const relativePath = path.relative(rootPath, dir);
   const docPath = '/' + relativePath.replace(/\\/g, '/');
   const codeFiles = getCodeFiles(dir);
@@ -460,7 +485,7 @@ function createDocMeta(dir, rootPath, config) {
   const files = {};
   for (const fileName of codeFiles) {
     const filePath = path.join(dir, fileName);
-    const analysis = analyzeFile(filePath);
+    const analysis = analyzeFile(filePath, aliases);
 
     const fileEntry = {
       purpose: '[purpose]',
@@ -540,8 +565,23 @@ function main() {
   // Load configuration
   const config = loadConfig(targetPath);
 
+  // Load path aliases from tsconfig.json/jsconfig.json
+  const aliases = loadPathAliases(targetPath);
+
   console.log('\n📚 DocMeta Init\n');
   console.log(`Scanning: ${targetPath}\n`);
+
+  // Report loaded aliases
+  const aliasCount = Object.keys(aliases).length;
+  const hasCustomAliases = aliasCount > 2; // More than just @/* and ~/*
+  if (hasCustomAliases) {
+    console.log(`📦 Loaded ${aliasCount} path aliases from tsconfig.json/jsconfig.json`);
+    const customAliases = Object.keys(aliases).filter(k => k !== '@/*' && k !== '~/*');
+    if (customAliases.length > 0) {
+      console.log(`   Custom: ${customAliases.slice(0, 5).join(', ')}${customAliases.length > 5 ? '...' : ''}`);
+    }
+    console.log('');
+  }
 
   const directories = findDirectories(targetPath);
   console.log(`Found ${directories.length} directories with code files\n`);
@@ -560,8 +600,8 @@ function main() {
       continue;
     }
 
-    // Create docmeta
-    const docMeta = createDocMeta(dir, targetPath, config);
+    // Create docmeta with path alias support
+    const docMeta = createDocMeta(dir, targetPath, config, aliases);
     const fileCount = Object.keys(docMeta.files).length;
 
     fs.writeFileSync(metaPath, JSON.stringify(docMeta, null, 2) + '\n');

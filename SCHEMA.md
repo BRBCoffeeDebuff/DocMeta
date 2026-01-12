@@ -317,16 +317,57 @@ Run `docmeta calls` to populate these fields automatically by scanning for:
 
 This bidirectional tracking is the main maintenance burden, but it's also the main value.
 
-## Language-Agnostic Notes
+## Language Support
 
-The schema works for any language. Conventions:
+DocMeta is optimized for **TypeScript/JavaScript** with full automatic detection. Other languages have basic support.
 
-| Language | exports | uses format |
-|----------|---------|-------------|
-| TypeScript/JS | Named exports, `default` | `@/path`, `./relative` |
-| Python | Function/class names, `__all__` | `from app.lib import` → `app/lib` |
-| Go | Capitalized (public) names | `import "project/pkg"` → `pkg` |
-| Rust | `pub` items | `use crate::module` → `module` |
+### Feature Support by Language
+
+| Feature | TypeScript/JS | Python | Go | Rust | Others |
+|---------|:-------------:|:------:|:--:|:----:|:------:|
+| Export detection | ✅ Full | ✅ Basic | ✅ Basic | ✅ Basic | ❌ Manual |
+| Import detection | ✅ Full | ⚠️ Relative only | ⚠️ Internal only | ✅ Basic | ❌ Manual |
+| HTTP calls (`calls`/`calledBy`) | ✅ Full | ❌ | ❌ | ❌ | ❌ |
+| Path aliases (tsconfig.json) | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+### TypeScript/JavaScript (Full Support)
+
+The CLI automatically detects:
+- **Exports:** `export const`, `export function`, `export class`, `export type`, `export interface`, `export { }`, `export default`
+- **Imports:** `import ... from`, `require()` — filters to internal paths only
+- **HTTP calls:** `fetch('/api/...')`, `axios.get/post/...`, `useSWR`, `useQuery` patterns
+- **Path aliases:** Reads from `tsconfig.json`/`jsconfig.json` (defaults: `@/` and `~/` → project root)
+
+### Python (Basic Support)
+
+- **Exports:** `__all__` arrays, public function/class names (no underscore prefix)
+- **Imports:** Relative imports only (e.g., `from .module import`)
+- **Not detected:** Absolute imports, HTTP calls
+
+### Go (Basic Support)
+
+- **Exports:** Public identifiers starting with uppercase letter
+- **Imports:** Internal package paths (not standard library or external modules)
+- **Not detected:** Standard library imports, HTTP calls
+
+### Rust (Basic Support)
+
+- **Exports:** `pub fn`, `pub struct`, `pub enum`, `pub trait`, `pub type`, `pub const`, `pub mod`
+- **Imports:** `use crate::`, `use super::`, `use self::`, `mod` declarations
+- **Not detected:** External crate usage, HTTP calls
+
+### Other Languages
+
+The CLI creates scaffolds with empty `exports` and `uses` arrays. Fill these in manually or let Claude Code populate them during code work.
+
+### Conventions by Language
+
+| Language | exports format | uses format |
+|----------|----------------|-------------|
+| TypeScript/JS | Named exports, `"default"` | `"@/path"`, `"./relative"` |
+| Python | Function/class names, `__all__` items | `".module"`, `"..parent"` |
+| Go | Capitalized public names | `"project/internal/pkg"` |
+| Rust | `pub` item names | `"crate::module"`, `"./submod"` |
 
 The key is consistency within your project, not cross-project standards.
 

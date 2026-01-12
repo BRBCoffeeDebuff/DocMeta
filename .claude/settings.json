@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_input.file_name' | grep -qE '\\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|php)$' && echo '{\"status\": \"ok\", \"message\": \"CODE FILE MODIFIED. Did you run the docmeta-updater agent? If not, you MUST run it before finishing.\"}' || echo '{\"status\": \"ok\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if code files (.ts, .js, .py, .go, .rs, etc.) were modified using Edit or Write tools in this conversation. If code files were modified, check if the docmeta-updater agent was invoked afterward. If code was modified but docmeta-updater was NOT called, respond with {\"ok\": false, \"reason\": \"Code files were modified but docmeta-updater agent was not called. Please run the docmeta-updater agent to sync documentation.\"}. If no code files were modified, or if docmeta-updater was already called, respond with {\"ok\": true}.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

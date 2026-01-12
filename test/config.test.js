@@ -13,7 +13,9 @@ const {
   trimHistory,
   readDocMeta,
   writeDocMeta,
-  findDocMetaFor
+  findDocMetaFor,
+  loadPathAliases,
+  resolvePathAlias
 } = require('../bin/lib/config');
 
 // Create a temporary directory for each test
@@ -218,5 +220,192 @@ describe('findDocMetaFor', () => {
 
     const result = findDocMetaFor(path.join(subDir, 'index.js'));
     expect(result).toBeNull();
+  });
+});
+
+describe('loadPathAliases', () => {
+  test('returns default aliases when no config exists', () => {
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@/*']).toEqual(['/*']);
+    expect(aliases['~/*']).toEqual(['/*']);
+  });
+
+  test('loads aliases from tsconfig.json', () => {
+    const tsconfig = {
+      compilerOptions: {
+        baseUrl: '.',
+        paths: {
+          '@components/*': ['./src/components/*'],
+          '@utils/*': ['./src/utils/*']
+        }
+      }
+    };
+    fs.writeFileSync(
+      path.join(testDir, 'tsconfig.json'),
+      JSON.stringify(tsconfig)
+    );
+
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@components/*']).toEqual(['/src/components/*']);
+    expect(aliases['@utils/*']).toEqual(['/src/utils/*']);
+    // Default aliases should still be present
+    expect(aliases['@/*']).toEqual(['/*']);
+  });
+
+  test('loads aliases from jsconfig.json when no tsconfig', () => {
+    const jsconfig = {
+      compilerOptions: {
+        baseUrl: '.',
+        paths: {
+          '@lib/*': ['./lib/*']
+        }
+      }
+    };
+    fs.writeFileSync(
+      path.join(testDir, 'jsconfig.json'),
+      JSON.stringify(jsconfig)
+    );
+
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@lib/*']).toEqual(['/lib/*']);
+  });
+
+  test('prefers tsconfig.json over jsconfig.json', () => {
+    const tsconfig = {
+      compilerOptions: {
+        paths: { '@/*': ['./src/*'] }
+      }
+    };
+    const jsconfig = {
+      compilerOptions: {
+        paths: { '@/*': ['./other/*'] }
+      }
+    };
+    fs.writeFileSync(
+      path.join(testDir, 'tsconfig.json'),
+      JSON.stringify(tsconfig)
+    );
+    fs.writeFileSync(
+      path.join(testDir, 'jsconfig.json'),
+      JSON.stringify(jsconfig)
+    );
+
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@/*']).toEqual(['/src/*']);
+  });
+
+  test('handles baseUrl other than "."', () => {
+    const tsconfig = {
+      compilerOptions: {
+        baseUrl: 'src',
+        paths: {
+          '@utils/*': ['./utils/*']
+        }
+      }
+    };
+    fs.writeFileSync(
+      path.join(testDir, 'tsconfig.json'),
+      JSON.stringify(tsconfig)
+    );
+
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@utils/*']).toEqual(['/src/utils/*']);
+  });
+
+  test('handles JSON with comments', () => {
+    const tsconfigWithComments = `{
+      // This is a comment
+      "compilerOptions": {
+        "baseUrl": ".",
+        /* Block comment */
+        "paths": {
+          "@test/*": ["./test/*"]
+        }
+      }
+    }`;
+    fs.writeFileSync(path.join(testDir, 'tsconfig.json'), tsconfigWithComments);
+
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@test/*']).toEqual(['/test/*']);
+  });
+
+  test('handles invalid JSON gracefully', () => {
+    fs.writeFileSync(path.join(testDir, 'tsconfig.json'), 'not valid json');
+
+    const aliases = loadPathAliases(testDir);
+    // Should still return default aliases
+    expect(aliases['@/*']).toEqual(['/*']);
+    expect(aliases['~/*']).toEqual(['/*']);
+  });
+
+  test('handles missing compilerOptions gracefully', () => {
+    fs.writeFileSync(path.join(testDir, 'tsconfig.json'), '{}');
+
+    const aliases = loadPathAliases(testDir);
+    expect(aliases['@/*']).toEqual(['/*']);
+  });
+});
+
+describe('resolvePathAlias', () => {
+  const defaultAliases = {
+    '@/*': ['/*'],
+    '~/*': ['/*'],
+    '@components/*': ['/src/components/*'],
+    '@utils/*': ['/src/utils/*'],
+    'config': ['/src/config']
+  };
+
+  test('resolves relative imports', () => {
+    const fromDir = path.join(testDir, 'src', 'components');
+    const result = resolvePathAlias('./Button', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/src/components/Button');
+  });
+
+  test('resolves parent relative imports', () => {
+    const fromDir = path.join(testDir, 'src', 'components', 'forms');
+    const result = resolvePathAlias('../Button', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/src/components/Button');
+  });
+
+  test('resolves default @/ alias', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('@/lib/auth', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/lib/auth');
+  });
+
+  test('resolves default ~/ alias', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('~/utils/helpers', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/utils/helpers');
+  });
+
+  test('resolves custom wildcard aliases', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('@components/Button', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/src/components/Button');
+  });
+
+  test('resolves exact match aliases', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('config', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/src/config');
+  });
+
+  test('returns null for unrecognized imports', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('lodash', defaultAliases, fromDir, testDir);
+    expect(result).toBeNull();
+  });
+
+  test('returns null for bare module specifiers', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('react', defaultAliases, fromDir, testDir);
+    expect(result).toBeNull();
+  });
+
+  test('handles nested alias paths', () => {
+    const fromDir = path.join(testDir, 'src');
+    const result = resolvePathAlias('@utils/date/format', defaultAliases, fromDir, testDir);
+    expect(result).toBe('/src/utils/date/format');
   });
 });

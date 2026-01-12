@@ -24,6 +24,7 @@ const { getIgnorePatterns } = require('./lib/ignores');
 
 const GLOBAL_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
 const LOCAL_SETTINGS_PATH = path.join(process.cwd(), '.claude', 'settings.local.json');
+const PROJECT_SETTINGS_PATH = path.join(process.cwd(), '.claude', 'settings.json');
 const CLAUDE_MD_PATH = path.join(process.cwd(), '.claude', 'CLAUDE.md');
 
 // Skip CLAUDE.md installation via environment variable
@@ -362,6 +363,104 @@ function installClaudeMd() {
 }
 
 // ============================================================================
+// Hooks Installation
+// ============================================================================
+
+const DOCMETA_HOOKS = {
+  PostToolUse: [
+    {
+      matcher: "Edit|Write",
+      hooks: [
+        {
+          type: "command",
+          command: "jq -r '.tool_input.file_path // .tool_input.file_name' | grep -qE '\\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|php)$' && echo '{\"status\": \"ok\", \"message\": \"CODE FILE MODIFIED. Did you run the docmeta-updater agent? If not, you MUST run it before finishing.\"}' || echo '{\"status\": \"ok\"}'",
+          timeout: 5
+        }
+      ]
+    }
+  ],
+  Stop: [
+    {
+      hooks: [
+        {
+          type: "prompt",
+          prompt: "Check if code files (.ts, .js, .py, .go, .rs, etc.) were modified using Edit or Write tools in this conversation. If code files were modified, check if the docmeta-updater agent was invoked afterward. If code was modified but docmeta-updater was NOT called, respond with {\"ok\": false, \"reason\": \"Code files were modified but docmeta-updater agent was not called. Please run the docmeta-updater agent to sync documentation.\"}. If no code files were modified, or if docmeta-updater was already called, respond with {\"ok\": true}.",
+          timeout: 30
+        }
+      ]
+    }
+  ]
+};
+
+/**
+ * Install DocMeta hooks to project settings.json
+ * Returns: { action: 'created' | 'updated' | 'skipped', reason?: string }
+ */
+function installHooks() {
+  const dir = path.dirname(PROJECT_SETTINGS_PATH);
+
+  // Ensure .claude directory exists
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  let settings = {};
+  let action = 'created';
+
+  // Read existing settings if present
+  if (fs.existsSync(PROJECT_SETTINGS_PATH)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(PROJECT_SETTINGS_PATH, 'utf-8'));
+      action = 'updated';
+    } catch {
+      // Invalid JSON, start fresh
+      settings = {};
+    }
+  }
+
+  // Check if hooks already exist
+  if (settings.hooks?.PostToolUse && settings.hooks?.Stop) {
+    // Check if they're our hooks by looking for the docmeta-updater mention
+    const hasOurHooks = JSON.stringify(settings.hooks).includes('docmeta-updater');
+    if (hasOurHooks) {
+      return { action: 'skipped', reason: 'hooks already installed' };
+    }
+  }
+
+  // Merge hooks - preserve existing hooks if any
+  if (!settings.hooks) {
+    settings.hooks = {};
+  }
+
+  // Add PostToolUse hooks (merge with existing)
+  if (!settings.hooks.PostToolUse) {
+    settings.hooks.PostToolUse = [];
+  }
+  // Check if our hook already exists
+  const hasPostToolUseHook = settings.hooks.PostToolUse.some(
+    h => h.matcher === 'Edit|Write' && JSON.stringify(h).includes('docmeta-updater')
+  );
+  if (!hasPostToolUseHook) {
+    settings.hooks.PostToolUse.push(...DOCMETA_HOOKS.PostToolUse);
+  }
+
+  // Add Stop hooks (merge with existing)
+  if (!settings.hooks.Stop) {
+    settings.hooks.Stop = [];
+  }
+  // Check if our hook already exists
+  const hasStopHook = settings.hooks.Stop.some(
+    h => JSON.stringify(h).includes('docmeta-updater')
+  );
+  if (!hasStopHook) {
+    settings.hooks.Stop.push(...DOCMETA_HOOKS.Stop);
+  }
+
+  fs.writeFileSync(PROJECT_SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+  return { action };
+}
+
+// ============================================================================
 // Setup Modes
 // ============================================================================
 
@@ -372,10 +471,11 @@ async function runDefaultSetup(prompter) {
   print('  1. Add DocMeta MCP server to your global Claude settings');
   print('  2. Add DocMeta MCP server to .vscode/mcp.json (for VS Code)');
   print('  3. Install the docmeta-updater agent for Claude Code CLI');
-  print('  4. Add DocMeta instructions to .claude/CLAUDE.md');
-  print('  5. Initialize .docmeta.json files in this project');
-  print('  6. Build the dependency graph');
-  print('  7. Analyze for cycles, orphans, and entry points');
+  print('  4. Install hooks to enforce documentation updates');
+  print('  5. Add DocMeta instructions to .claude/CLAUDE.md');
+  print('  6. Initialize .docmeta.json files in this project');
+  print('  7. Build the dependency graph');
+  print('  8. Analyze for cycles, orphans, and entry points');
   print('');
 
   const proceed = await prompter.confirm('Continue with default setup?');
@@ -421,7 +521,17 @@ async function runDefaultSetup(prompter) {
     printInfo(`Skipped ${file}`);
   }
 
-  // Step 4: Install CLAUDE.md
+  // Step 4: Install hooks
+  const hooksResult = installHooks();
+  if (hooksResult.action === 'created') {
+    printSuccess(`Created ${PROJECT_SETTINGS_PATH} with DocMeta hooks`);
+  } else if (hooksResult.action === 'updated') {
+    printSuccess(`Added DocMeta hooks to ${PROJECT_SETTINGS_PATH}`);
+  } else if (hooksResult.action === 'skipped') {
+    printInfo('DocMeta hooks already installed');
+  }
+
+  // Step 5: Install CLAUDE.md (renumbered)
   if (!SKIP_CLAUDE_MD) {
     const claudeMdResult = installClaudeMd();
     if (claudeMdResult.action === 'created') {
@@ -433,16 +543,16 @@ async function runDefaultSetup(prompter) {
     printInfo('Skipped CLAUDE.md (DOCMETA_SKIP_CLAUDEMD set)');
   }
 
-  // Step 5: Init docmeta
+  // Step 6: Init docmeta
   print('');
   process.argv = ['node', 'init.js', '.'];
   initDocMeta();
 
-  // Step 6: Run usedby
+  // Step 7: Run usedby
   process.argv = ['node', 'usedby.js', '.'];
   runUsedBy();
 
-  // Step 7: Run graph analysis
+  // Step 8: Run graph analysis
   process.argv = ['node', 'graph.js'];
   runGraph();
 
@@ -544,6 +654,20 @@ async function runAdvancedSetup(prompter) {
     }
     for (const file of subagentResult.skipped) {
       printInfo(`Skipped ${file}`);
+    }
+
+    // Install hooks if agent was installed
+    print('');
+    const installHooksChoice = await prompter.confirm('Install hooks to enforce documentation updates?');
+    if (installHooksChoice) {
+      const hooksResult = installHooks();
+      if (hooksResult.action === 'created') {
+        printSuccess(`Created ${PROJECT_SETTINGS_PATH} with DocMeta hooks`);
+      } else if (hooksResult.action === 'updated') {
+        printSuccess(`Added DocMeta hooks to ${PROJECT_SETTINGS_PATH}`);
+      } else if (hooksResult.action === 'skipped') {
+        printInfo('DocMeta hooks already installed');
+      }
     }
   }
 

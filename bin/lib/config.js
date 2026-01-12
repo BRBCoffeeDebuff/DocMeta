@@ -85,6 +85,119 @@ const DEFAULT_CONFIG = {
 };
 
 // ============================================================================
+// TypeScript Path Alias Resolution
+// ============================================================================
+
+/**
+ * Load path aliases from tsconfig.json or jsconfig.json
+ * @param {string} rootPath - Project root directory
+ * @returns {Object} Map of alias patterns to resolved paths
+ */
+function loadPathAliases(rootPath) {
+  const aliases = {
+    // Default aliases (always available)
+    '@/*': ['/*'],
+    '~/*': ['/*']
+  };
+
+  // Try tsconfig.json first, then jsconfig.json
+  const configFiles = ['tsconfig.json', 'jsconfig.json'];
+
+  for (const configFile of configFiles) {
+    const configPath = path.join(rootPath, configFile);
+
+    try {
+      if (!fs.existsSync(configPath)) continue;
+
+      const content = fs.readFileSync(configPath, 'utf-8');
+      // Remove comments (JSON with comments support)
+      const cleanedContent = content
+        .replace(/\/\*[\s\S]*?\*\//g, '')  // Block comments
+        .replace(/\/\/.*$/gm, '');          // Line comments
+
+      const config = JSON.parse(cleanedContent);
+
+      // Get baseUrl (defaults to '.')
+      const baseUrl = config.compilerOptions?.baseUrl || '.';
+
+      // Get paths mapping
+      const paths = config.compilerOptions?.paths || {};
+
+      // Convert paths to our format
+      for (const [pattern, targets] of Object.entries(paths)) {
+        if (Array.isArray(targets) && targets.length > 0) {
+          // Resolve targets relative to baseUrl
+          const resolvedTargets = targets.map(target => {
+            // If baseUrl is '.', the target is relative to project root
+            // If baseUrl is 'src', target './utils' becomes '/src/utils'
+            if (baseUrl === '.') {
+              return target.startsWith('./') ? target.slice(1) : '/' + target;
+            } else {
+              const base = '/' + baseUrl.replace(/^\.\//, '');
+              return target.startsWith('./')
+                ? base + target.slice(1)
+                : base + '/' + target;
+            }
+          });
+          aliases[pattern] = resolvedTargets;
+        }
+      }
+
+      // Found and parsed a config, stop looking
+      break;
+    } catch (err) {
+      // Invalid JSON or other error, continue to next file
+      continue;
+    }
+  }
+
+  return aliases;
+}
+
+/**
+ * Resolve an import path using path aliases
+ * @param {string} importPath - The import path to resolve (e.g., '@components/Button')
+ * @param {Object} aliases - Path aliases from loadPathAliases()
+ * @param {string} fromDir - Directory the import is from (for relative resolution)
+ * @param {string} rootPath - Project root
+ * @returns {string|null} Resolved absolute path or null if not resolvable
+ */
+function resolvePathAlias(importPath, aliases, fromDir, rootPath) {
+  // Handle relative imports directly
+  if (importPath.startsWith('.')) {
+    const fromRelative = '/' + path.relative(rootPath, fromDir).replace(/\\/g, '/');
+    return path.posix.normalize(path.posix.join(fromRelative, importPath));
+  }
+
+  // Try each alias pattern
+  for (const [pattern, targets] of Object.entries(aliases)) {
+    // Pattern is like '@/*' or '@components/*' or 'utils'
+    const isWildcard = pattern.endsWith('/*');
+    const patternBase = isWildcard ? pattern.slice(0, -2) : pattern;
+
+    if (isWildcard) {
+      // Wildcard pattern: @/* matches @/anything
+      if (importPath.startsWith(patternBase + '/')) {
+        const remainder = importPath.slice(patternBase.length + 1);
+        // Use first target (most common case)
+        const target = targets[0];
+        const targetBase = target.endsWith('/*') ? target.slice(0, -2) : target;
+        return targetBase + '/' + remainder;
+      }
+    } else {
+      // Exact match pattern
+      if (importPath === patternBase) {
+        const target = targets[0];
+        return target.endsWith('/*') ? target.slice(0, -2) : target;
+      }
+    }
+  }
+
+  // Not a recognized alias
+  return null;
+}
+
+// ============================================================================
 // Config File Management
 // ============================================================================
 
@@ -252,5 +365,7 @@ module.exports = {
   trimHistory,
   readDocMeta,
   writeDocMeta,
-  findDocMetaFor
+  findDocMetaFor,
+  loadPathAliases,
+  resolvePathAlias
 };

@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadPathAliases, resolvePathAlias } = require('./lib/config');
 
 const IGNORE_DIRS = ['node_modules', '.git', '.next', 'dist', 'build'];
 
@@ -47,27 +48,11 @@ function findDocMetaFiles(rootPath) {
 
 /**
  * Resolve an import path to an absolute project path
+ * Now uses tsconfig.json/jsconfig.json path aliases when available
  */
-function resolveImportPath(importPath, fromDir, rootPath) {
-  // Handle @/ alias (common in Next.js, configured in tsconfig)
-  if (importPath.startsWith('@/')) {
-    return importPath.replace('@/', '/');
-  }
-  
-  // Handle ~/ alias
-  if (importPath.startsWith('~/')) {
-    return importPath.replace('~/', '/');
-  }
-  
-  // Handle relative imports
-  if (importPath.startsWith('.')) {
-    const fromRelative = '/' + path.relative(rootPath, fromDir).replace(/\\/g, '/');
-    const resolved = path.posix.normalize(path.posix.join(fromRelative, importPath));
-    return resolved;
-  }
-  
-  // Not a recognized internal import pattern
-  return null;
+function resolveImportPath(importPath, fromDir, rootPath, aliases) {
+  // Use the shared alias resolver from config
+  return resolvePathAlias(importPath, aliases, fromDir, rootPath);
 }
 
 /**
@@ -83,13 +68,26 @@ function normalizeForLookup(p) {
  */
 function main() {
   const rootPath = path.resolve(process.argv[2] || '.');
-  
+
   console.log('\n🔗 DocMeta UsedBy Resolver\n');
   console.log(`Scanning: ${rootPath}\n`);
-  
+
+  // Load path aliases from tsconfig.json/jsconfig.json
+  const aliases = loadPathAliases(rootPath);
+  const aliasCount = Object.keys(aliases).length;
+  const hasCustomAliases = aliasCount > 2; // More than just @/* and ~/*
+  if (hasCustomAliases) {
+    console.log(`📦 Loaded ${aliasCount} path aliases from tsconfig.json/jsconfig.json`);
+    const customAliases = Object.keys(aliases).filter(k => k !== '@/*' && k !== '~/*');
+    if (customAliases.length > 0) {
+      console.log(`   Custom: ${customAliases.slice(0, 5).join(', ')}${customAliases.length > 5 ? '...' : ''}`);
+    }
+    console.log('');
+  }
+
   const docMetaFiles = findDocMetaFiles(rootPath);
   console.log(`Found ${docMetaFiles.length} .docmeta.json files\n`);
-  
+
   if (docMetaFiles.length === 0) {
     console.log('No .docmeta.json files found. Run "docmeta init" first.\n');
     return;
@@ -147,8 +145,8 @@ function main() {
       const uses = fileData.uses || [];
       
       for (const usePath of uses) {
-        // Resolve the import path
-        const resolved = resolveImportPath(usePath, dir, rootPath);
+        // Resolve the import path using tsconfig aliases
+        const resolved = resolveImportPath(usePath, dir, rootPath, aliases);
         if (!resolved) continue;
         
         const normalized = normalizeForLookup(resolved);
@@ -212,7 +210,7 @@ function main() {
     console.log('\n   These targets either:');
     console.log('   - Are external packages (expected, ignore these)');
     console.log('   - Are in directories without .docmeta.json (run "docmeta init")');
-    console.log('   - Use import aliases not recognized (configure in code)\n');
+    console.log('   - Use path aliases not in tsconfig.json/jsconfig.json\n');
   }
   
   console.log('💡 The usedBy fields now show what files depend on each file.');
