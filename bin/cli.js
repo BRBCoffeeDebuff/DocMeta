@@ -66,7 +66,7 @@ Workflow:
 Learn more: https://github.com/anthropic-community/docmeta
 `;
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 function main() {
   const args = process.argv.slice(2);
