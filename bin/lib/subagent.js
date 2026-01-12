@@ -43,7 +43,8 @@ When asked to update documentation:
    - \`history\`: Add entry for significant changes
 
 4. **Run \`docmeta usedby\`** after changing \`uses\` arrays
-5. **Run \`docmeta check\`** to verify no issues
+5. **Run \`docmeta graph\`** to check for cycles, orphans, entry points
+6. **Run \`docmeta check\`** to verify no issues
 
 ## Writing Good Purposes
 
@@ -81,6 +82,8 @@ ${ignoreFiles.length > 15 ? `- ... and ${ignoreFiles.length - 15} more` : ''}
 - \`docmeta update <file> --history "what changed"\` - Add history entry
 - \`docmeta update --sync\` - Add new files, remove deleted ones
 - \`docmeta usedby\` - Rebuild all usedBy relationships
+- \`docmeta graph\` - Analyze graph (cycles, orphans, entry points)
+- \`docmeta graph --blast-radius <file>\` - Full impact analysis
 - \`docmeta check\` - Find documentation issues
 
 ## Example Task
@@ -95,7 +98,8 @@ Steps:
 5. Check if uses array matches actual imports
 6. Add history entry if making changes
 7. Run \`docmeta usedby\` if uses changed
-8. Run \`docmeta check\` to verify
+8. Run \`docmeta graph\` to check for issues
+9. Run \`docmeta check\` to verify
 `;
 }
 
@@ -115,6 +119,7 @@ This project uses DocMeta for living documentation. Each folder with code has a 
 docmeta update <file> --history "what changed"  # Add history entry
 docmeta update --sync                           # Sync new/deleted files
 docmeta usedby                                  # Rebuild dependencies
+docmeta graph                                   # Check for cycles/orphans
 \`\`\`
 
 This ensures documentation stays in sync with the code. These commands will:
@@ -122,12 +127,14 @@ This ensures documentation stays in sync with the code. These commands will:
 - Sync exports and uses arrays
 - Add history entries with timestamps
 - Rebuild the usedBy dependency graph
+- Detect circular dependencies and dead code
 
 ### Before Modifying Code
 
 1. Check the \`.docmeta.json\` in the target folder
 2. Read the \`usedBy\` array to understand what depends on this code
-3. Note any breaking changes you'll need to communicate
+3. Use \`docmeta graph --blast-radius <file>\` for full impact analysis
+4. Note any breaking changes you'll need to communicate
 
 ### Quick Commands (for manual use)
 
@@ -136,12 +143,15 @@ docmeta update <file> --purpose "description"  # Update purpose
 docmeta update <file> --history "what changed" # Add history
 docmeta update --sync                          # Sync with filesystem
 docmeta usedby                                 # Rebuild dependencies
+docmeta graph                                  # Find cycles, orphans, entry points
+docmeta graph --blast-radius <file>            # Full impact analysis
 docmeta check                                  # Find issues
 \`\`\`
 
-### Key Insight: usedBy
+### Key Insight: usedBy and Blast Radius
 
 The \`usedBy\` field shows your **blast radius** - what might break if you change this file.
+Use \`docmeta graph --blast-radius <file>\` for the full transitive impact.
 Always check it before making breaking changes to exports.
 `;
 }
@@ -217,7 +227,18 @@ After code files have been created, edited, or deleted, you must update the DocM
    \`\`\`
    This rebuilds the \`usedBy\` dependency graph to reflect any changes in imports/exports.
 
-5. **Verify Documentation Health**: Run:
+5. **Analyze Graph Health** (optional but recommended for significant changes): Run:
+   \`\`\`bash
+   docmeta graph
+   \`\`\`
+   This will identify:
+   - **Cycles**: Circular dependencies that may cause issues
+   - **Orphans**: Dead code candidates (files not used by anything)
+   - **Entry Points**: Root files where execution starts
+
+   Report any cycles or orphans found so they can be addressed.
+
+6. **Verify Documentation Health**: Run:
    \`\`\`bash
    docmeta check
    \`\`\`
@@ -295,6 +316,7 @@ docmeta update src/hooks/useDebounce.ts --purpose "React hook that debounces rap
 
 # Rebuild and verify
 docmeta usedby
+docmeta graph  # Check for cycles, orphans, entry points
 docmeta check
 \`\`\`
 

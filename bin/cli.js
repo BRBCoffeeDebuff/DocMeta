@@ -16,6 +16,7 @@ Usage:
   docmeta setup           Interactive setup wizard (recommended for new users)
   docmeta init [path]     Create .docmeta.json scaffolds for code directories
   docmeta usedby [path]   Populate usedBy fields by resolving uses references
+  docmeta graph           Analyze dependency graph (cycles, orphans, blast radius)
   docmeta update <target> Update file/folder metadata (--purpose, --history, --sync)
   docmeta crawl           Find files needing purposes, process in batches
   docmeta ignore          Manage ignore patterns (--add-dir, --add-file, --remove)
@@ -23,16 +24,24 @@ Usage:
   docmeta check [path]    Find stale or incomplete documentation
   docmeta mcp             Start MCP server for Claude Code integration
 
+Graph Analysis:
+  docmeta graph                        Full analysis (entry points, orphans, cycles)
+  docmeta graph --blast-radius <file>  What breaks if I change this file?
+  docmeta graph --orphans              Find dead code candidates
+  docmeta graph --cycles               Find circular dependencies
+  docmeta graph --entry-points         Find where execution starts
+  docmeta graph --output <file>        Export graph to JSON
+
 Options:
   --help, -h              Show this help message
   --version, -v           Show version
 
 Examples:
-  docmeta init                  # Bootstrap docs for current directory
-  docmeta init ./src            # Bootstrap just ./src
-  docmeta usedby                # Resolve all usedBy references
-  docmeta check                 # Find documentation issues
-  docmeta registry add github:org/repo  # Track cross-repo dependencies
+  docmeta init                         # Bootstrap docs for current directory
+  docmeta usedby                       # Resolve all usedBy references
+  docmeta graph                        # Full graph analysis
+  docmeta graph --blast-radius src/api # What breaks if I change src/api?
+  docmeta check                        # Find documentation issues
 
 MCP Integration:
   Add to your Claude Code settings (~/.claude/settings.json):
@@ -49,12 +58,8 @@ Workflow:
   1. docmeta setup         # Interactive setup (or use commands below)
   2. docmeta init          # Create scaffolds
   3. docmeta usedby        # Build dependency graph
-  4. docmeta crawl         # Fill in purposes (batched)
-
-Cross-Repo Workflow:
-  1. docmeta registry add github:org/other-service
-  2. docmeta registry import ./bundle.json --repo github:org/other-service
-  3. docmeta blast-radius --cross-repo ./src/api.ts
+  4. docmeta graph         # Analyze for issues
+  5. docmeta crawl         # Fill in purposes (batched)
 
 Learn more: https://github.com/anthropic-community/docmeta
 `;
@@ -79,6 +84,11 @@ function main() {
     case 'usedby':
       process.argv = ['node', 'usedby.js', args[1] || '.'];
       require('./usedby.js');
+      break;
+
+    case 'graph':
+      process.argv = ['node', 'graph.js', ...args.slice(1)];
+      require('./graph.js');
       break;
 
     case 'update':

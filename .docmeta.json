@@ -1,0 +1,22 @@
+{
+  "v": 2,
+  "purpose": "DocMeta - Living documentation for AI-assisted coding. Provides CLI tools and MCP server for tracking code purposes and dependencies.",
+  "files": {
+    "jest.config.js": {
+      "purpose": "Jest test runner configuration. Sets up Node test environment for bin/ tests.",
+      "exports": [],
+      "uses": [],
+      "usedBy": []
+    }
+  },
+  "history": [
+    [
+      "2026-01-12T04:17:39.741Z",
+      "Initial documentation scaffold",
+      [
+        "jest.config.js"
+      ]
+    ]
+  ],
+  "updated": "2026-01-12T04:23:20.853Z"
+}

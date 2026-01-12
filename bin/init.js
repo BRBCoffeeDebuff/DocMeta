@@ -159,13 +159,181 @@ function extractPythonExports(content) {
  */
 function extractPythonImports(content) {
   const imports = new Set();
-  
+
   // from .module import ... (relative imports)
   const relativeImports = content.matchAll(/from\s+(\.+\w*)/g);
   for (const match of relativeImports) {
     imports.add(match[1]);
   }
-  
+
+  return [...imports];
+}
+
+/**
+ * Extract exports from Go file
+ * In Go, exported identifiers start with an uppercase letter
+ */
+function extractGoExports(content) {
+  const exports = new Set();
+
+  // func FunctionName (exported functions start with uppercase)
+  const funcMatches = content.matchAll(/^func\s+(?:\([^)]+\)\s+)?([A-Z]\w*)/gm);
+  for (const match of funcMatches) {
+    exports.add(match[1]);
+  }
+
+  // type TypeName (exported types start with uppercase)
+  const typeMatches = content.matchAll(/^type\s+([A-Z]\w*)/gm);
+  for (const match of typeMatches) {
+    exports.add(match[1]);
+  }
+
+  // var/const VarName (exported vars/consts start with uppercase)
+  const varMatches = content.matchAll(/^(?:var|const)\s+([A-Z]\w*)/gm);
+  for (const match of varMatches) {
+    exports.add(match[1]);
+  }
+
+  // const block: const ( VarName = ... )
+  const constBlocks = content.matchAll(/^const\s*\(\s*([\s\S]*?)\)/gm);
+  for (const block of constBlocks) {
+    const names = block[1].matchAll(/^\s*([A-Z]\w*)/gm);
+    for (const name of names) {
+      exports.add(name[1]);
+    }
+  }
+
+  // var block: var ( VarName = ... )
+  const varBlocks = content.matchAll(/^var\s*\(\s*([\s\S]*?)\)/gm);
+  for (const block of varBlocks) {
+    const names = block[1].matchAll(/^\s*([A-Z]\w*)/gm);
+    for (const name of names) {
+      exports.add(name[1]);
+    }
+  }
+
+  return [...exports];
+}
+
+/**
+ * Extract imports from Go file
+ */
+function extractGoImports(content) {
+  const imports = new Set();
+
+  // Single import: import "path"
+  const singleImports = content.matchAll(/^import\s+"([^"]+)"/gm);
+  for (const match of singleImports) {
+    // Only track relative/local imports (not standard library)
+    const importPath = match[1];
+    if (importPath.startsWith('.') || importPath.includes('/internal/') || !importPath.includes('.')) {
+      // Skip standard library imports (no dots in path like "fmt", "os")
+      if (importPath.includes('/')) {
+        imports.add(importPath);
+      }
+    }
+  }
+
+  // Import block: import ( "path1" "path2" )
+  const importBlocks = content.matchAll(/^import\s*\(\s*([\s\S]*?)\)/gm);
+  for (const block of importBlocks) {
+    const paths = block[1].matchAll(/(?:\w+\s+)?"([^"]+)"/g);
+    for (const pathMatch of paths) {
+      const importPath = pathMatch[1];
+      // Track project-internal imports (contain the module path)
+      if (importPath.includes('/') && !importPath.startsWith('golang.org') &&
+          !importPath.startsWith('github.com/') && !importPath.startsWith('gopkg.in')) {
+        // This is a simplification - in real Go projects you'd check against go.mod
+        imports.add(importPath);
+      }
+    }
+  }
+
+  return [...imports];
+}
+
+/**
+ * Extract exports from Rust file
+ * In Rust, pub items are exported
+ */
+function extractRustExports(content) {
+  const exports = new Set();
+
+  // pub fn function_name
+  const pubFnMatches = content.matchAll(/pub\s+(?:async\s+)?fn\s+(\w+)/g);
+  for (const match of pubFnMatches) {
+    exports.add(match[1]);
+  }
+
+  // pub struct StructName
+  const pubStructMatches = content.matchAll(/pub\s+struct\s+(\w+)/g);
+  for (const match of pubStructMatches) {
+    exports.add(match[1]);
+  }
+
+  // pub enum EnumName
+  const pubEnumMatches = content.matchAll(/pub\s+enum\s+(\w+)/g);
+  for (const match of pubEnumMatches) {
+    exports.add(match[1]);
+  }
+
+  // pub trait TraitName
+  const pubTraitMatches = content.matchAll(/pub\s+trait\s+(\w+)/g);
+  for (const match of pubTraitMatches) {
+    exports.add(match[1]);
+  }
+
+  // pub type TypeName
+  const pubTypeMatches = content.matchAll(/pub\s+type\s+(\w+)/g);
+  for (const match of pubTypeMatches) {
+    exports.add(match[1]);
+  }
+
+  // pub const/static CONST_NAME
+  const pubConstMatches = content.matchAll(/pub\s+(?:const|static)\s+(\w+)/g);
+  for (const match of pubConstMatches) {
+    exports.add(match[1]);
+  }
+
+  // pub mod module_name
+  const pubModMatches = content.matchAll(/pub\s+mod\s+(\w+)/g);
+  for (const match of pubModMatches) {
+    exports.add(match[1]);
+  }
+
+  return [...exports];
+}
+
+/**
+ * Extract imports from Rust file
+ */
+function extractRustImports(content) {
+  const imports = new Set();
+
+  // use crate::module::item
+  const crateImports = content.matchAll(/use\s+crate::([^;{]+)/g);
+  for (const match of crateImports) {
+    imports.add('crate::' + match[1].trim().split('::')[0]);
+  }
+
+  // use super::module
+  const superImports = content.matchAll(/use\s+super::([^;{]+)/g);
+  for (const match of superImports) {
+    imports.add('super::' + match[1].trim().split('::')[0]);
+  }
+
+  // use self::module (within same module)
+  const selfImports = content.matchAll(/use\s+self::([^;{]+)/g);
+  for (const match of selfImports) {
+    imports.add('self::' + match[1].trim().split('::')[0]);
+  }
+
+  // mod module_name; (declares submodule)
+  const modDecls = content.matchAll(/^mod\s+(\w+)\s*;/gm);
+  for (const match of modDecls) {
+    imports.add('./' + match[1]);
+  }
+
   return [...imports];
 }
 
@@ -187,6 +355,12 @@ function analyzeFile(filePath) {
     } else if (['.py', '.pyw'].includes(ext)) {
       exports = extractPythonExports(content);
       uses = extractPythonImports(content);
+    } else if (ext === '.go') {
+      exports = extractGoExports(content);
+      uses = extractGoImports(content);
+    } else if (ext === '.rs') {
+      exports = extractRustExports(content);
+      uses = extractRustImports(content);
     }
     // Other languages: leave empty, to be filled manually or by Claude
     

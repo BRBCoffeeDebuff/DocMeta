@@ -186,6 +186,44 @@ function installMcpServer(filePath, options = {}) {
   return true;
 }
 
+/**
+ * Install MCP server configuration for VS Code native MCP support
+ * This creates .vscode/mcp.json for VS Code's MCP integration
+ */
+function installVsCodeMcp() {
+  const vscodeDir = path.join(process.cwd(), '.vscode');
+  const mcpJsonPath = path.join(vscodeDir, 'mcp.json');
+
+  // Ensure .vscode directory exists
+  if (!fs.existsSync(vscodeDir)) {
+    fs.mkdirSync(vscodeDir, { recursive: true });
+  }
+
+  // Read existing mcp.json or create new
+  let mcpConfig = { inputs: [], servers: {} };
+  if (fs.existsSync(mcpJsonPath)) {
+    try {
+      mcpConfig = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'));
+      if (!mcpConfig.servers) mcpConfig.servers = {};
+    } catch {
+      // Invalid JSON, start fresh
+      mcpConfig = { inputs: [], servers: {} };
+    }
+  }
+
+  const config = getMcpConfig();
+
+  // VS Code uses 'servers' not 'mcpServers', and requires 'type' field
+  mcpConfig.servers.docmeta = {
+    type: 'stdio',
+    command: config.command,
+    args: config.args
+  };
+
+  fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
+  return true;
+}
+
 function initDocMeta() {
   // Run docmeta init in current directory
   require('./init.js');
@@ -194,6 +232,11 @@ function initDocMeta() {
 function runUsedBy() {
   // Run docmeta usedby in current directory
   require('./usedby.js');
+}
+
+function runGraph() {
+  // Run docmeta graph in current directory
+  require('./graph.js');
 }
 
 // ============================================================================
@@ -222,13 +265,15 @@ Prompt: "Sync documentation after [describe what you changed]"
 The agent will run the full workflow:
 1. \`docmeta update --sync\` - Add new files, remove deleted
 2. \`docmeta usedby\` - Rebuild dependency graph
-3. \`docmeta check\` - Verify documentation health
+3. \`docmeta graph\` - Check for cycles, orphans, entry points
+4. \`docmeta check\` - Verify documentation health
 
 ### Before Modifying Code
 
 1. Check the \`.docmeta.json\` in the target folder
 2. Read the \`usedBy\` array to understand what depends on this code
-3. Note any breaking changes you'll need to communicate
+3. Use \`docmeta graph --blast-radius <file>\` for full impact analysis
+4. Note any breaking changes you'll need to communicate
 
 ### Manual Commands (if not using the agent)
 
@@ -237,12 +282,15 @@ docmeta update <file> --history "what changed"  # Add history entry
 docmeta update <file> --purpose "description"   # Update purpose
 docmeta update --sync                           # Sync with filesystem
 docmeta usedby                                  # Rebuild dependencies
+docmeta graph                                   # Find cycles, orphans, entry points
+docmeta graph --blast-radius <file>             # What breaks if I change this?
 docmeta check                                   # Find issues
 \`\`\`
 
-### Key Insight: usedBy
+### Key Insight: usedBy and Blast Radius
 
 The \`usedBy\` field shows your **blast radius** - what might break if you change this file.
+Use \`docmeta graph --blast-radius <file>\` for the full transitive impact.
 Always check it before making breaking changes to exports.
 
 ### Why This Matters
@@ -250,8 +298,9 @@ Always check it before making breaking changes to exports.
 Without documentation sync:
 - New files won't have purposes filled in
 - The \`usedBy\` graph becomes stale and misleading
+- Circular dependencies go unnoticed
+- Dead code accumulates
 - Future AI agents won't understand what code does
-- Breaking changes go unnoticed
 
 **The docmeta-updater agent exists precisely for this. Use it.**
 `;
@@ -320,10 +369,12 @@ async function runDefaultSetup(prompter) {
 
   print('This will:');
   print('  1. Add DocMeta MCP server to your global Claude settings');
-  print('  2. Install the docmeta-updater agent for Claude Code CLI');
-  print('  3. Add DocMeta instructions to .claude/CLAUDE.md');
-  print('  4. Initialize .docmeta.json files in this project');
-  print('  5. Build the dependency graph');
+  print('  2. Add DocMeta MCP server to .vscode/mcp.json (for VS Code)');
+  print('  3. Install the docmeta-updater agent for Claude Code CLI');
+  print('  4. Add DocMeta instructions to .claude/CLAUDE.md');
+  print('  5. Initialize .docmeta.json files in this project');
+  print('  6. Build the dependency graph');
+  print('  7. Analyze for cycles, orphans, and entry points');
   print('');
 
   const proceed = await prompter.confirm('Continue with default setup?');
@@ -334,7 +385,7 @@ async function runDefaultSetup(prompter) {
 
   print('');
 
-  // Step 1: Install MCP server globally
+  // Step 1: Install MCP server globally (for Claude Code CLI)
   const globalExists = checkExistingConfig(GLOBAL_SETTINGS_PATH);
   if (globalExists) {
     printWarning('MCP server already configured in global settings');
@@ -343,7 +394,11 @@ async function runDefaultSetup(prompter) {
     printSuccess(`Added MCP server to ${GLOBAL_SETTINGS_PATH}`);
   }
 
-  // Step 2: Install subagent
+  // Step 2: Install MCP server for VS Code native MCP support
+  installVsCodeMcp();
+  printSuccess('Added MCP server to .vscode/mcp.json (for VS Code)');
+
+  // Step 3: Install subagent
   const config = loadConfig(process.cwd());
   const ignores = getIgnorePatterns(process.cwd(), {
     customIgnoreDirs: config.customIgnoreDirs,
@@ -365,7 +420,7 @@ async function runDefaultSetup(prompter) {
     printInfo(`Skipped ${file}`);
   }
 
-  // Step 3: Install CLAUDE.md
+  // Step 4: Install CLAUDE.md
   if (!SKIP_CLAUDE_MD) {
     const claudeMdResult = installClaudeMd();
     if (claudeMdResult.action === 'created') {
@@ -377,20 +432,24 @@ async function runDefaultSetup(prompter) {
     printInfo('Skipped CLAUDE.md (DOCMETA_SKIP_CLAUDEMD set)');
   }
 
-  // Step 4: Init docmeta
+  // Step 5: Init docmeta
   print('');
   process.argv = ['node', 'init.js', '.'];
   initDocMeta();
 
-  // Step 5: Run usedby
+  // Step 6: Run usedby
   process.argv = ['node', 'usedby.js', '.'];
   runUsedBy();
+
+  // Step 7: Run graph analysis
+  process.argv = ['node', 'graph.js'];
+  runGraph();
 
   printHeader('Setup Complete!');
   print(`${colors.yellow}Start a new Claude Code session${colors.reset} to load the agent and MCP server.`);
   print('');
   print('After restarting, Claude will have:');
-  print('  - MCP tools: docmeta_lookup, docmeta_blast_radius, docmeta_search');
+  print('  - MCP tools: docmeta_lookup, docmeta_blast_radius, docmeta_graph, docmeta_search');
   print('  - docmeta-updater agent for automatic documentation updates');
   print('');
   print(`${colors.dim}Tip: File purposes will be filled in automatically as you work.${colors.reset}`);

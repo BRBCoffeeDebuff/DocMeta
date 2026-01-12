@@ -237,6 +237,304 @@ class DocMetaIndex {
 
     return results;
   }
+
+  // Find cycles in the dependency graph
+  findCycles() {
+    const cycles = [];
+    const visited = new Set();
+    const recursionStack = new Set();
+    const path = [];
+
+    const dfs = (node) => {
+      if (recursionStack.has(node)) {
+        const cycleStart = path.indexOf(node);
+        if (cycleStart !== -1) {
+          const cycle = path.slice(cycleStart).concat(node);
+          const minIdx = cycle.slice(0, -1).reduce((min, val, idx, arr) =>
+            val < arr[min] ? idx : min, 0);
+          const normalizedCycle = cycle.slice(minIdx, -1).concat(cycle.slice(0, minIdx + 1));
+          const cycleKey = normalizedCycle.join(' -> ');
+          if (!cycles.some(c => c.join(' -> ') === cycleKey)) {
+            cycles.push(normalizedCycle);
+          }
+        }
+        return;
+      }
+
+      if (visited.has(node)) return;
+
+      visited.add(node);
+      recursionStack.add(node);
+      path.push(node);
+
+      const fileInfo = this.fileIndex.get(node);
+      if (fileInfo) {
+        for (const dep of fileInfo.metadata.uses || []) {
+          for (const [filePath] of this.fileIndex) {
+            if (filePath.endsWith(dep) || filePath.includes(dep)) {
+              dfs(filePath);
+              break;
+            }
+          }
+        }
+      }
+
+      path.pop();
+      recursionStack.delete(node);
+    };
+
+    for (const [node] of this.fileIndex) {
+      visited.clear();
+      recursionStack.clear();
+      path.length = 0;
+      dfs(node);
+    }
+
+    return cycles;
+  }
+
+  // Find orphan files (no usedBy, but have uses - dead code candidates)
+  findOrphans() {
+    const orphans = [];
+
+    // Patterns that indicate entry points (not orphans even if unused)
+    const entryPointPatterns = [
+      /\/cli\.[jt]sx?$/,
+      /\/main\.[jt]sx?$/,
+      /\/index\.[jt]sx?$/,
+      /\/server\.[jt]sx?$/,
+      /\/app\.[jt]sx?$/,
+      /\/page\.[jt]sx?$/,
+      /^\/bin\//,
+      /^\/app\//,
+      /^\/pages\//,
+      /\/route\.[jt]sx?$/,
+    ];
+
+    for (const [filePath, { metadata }] of this.fileIndex) {
+      const usedBy = metadata.usedBy || [];
+      const uses = metadata.uses || [];
+
+      if (usedBy.length === 0) {
+        // Check if it's an entry point pattern
+        const isEntryPoint = entryPointPatterns.some(p => p.test(filePath));
+        if (isEntryPoint) continue;
+
+        const hasInternalDeps = uses.some(u =>
+          u.startsWith('.') || u.startsWith('@/') || u.startsWith('~/')
+        );
+
+        if (hasInternalDeps) {
+          orphans.push({
+            path: filePath,
+            purpose: metadata.purpose,
+            uses: uses.length
+          });
+        }
+      }
+    }
+
+    return orphans.sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  // Find entry points (files that don't use internal dependencies)
+  findEntryPoints() {
+    const entryPoints = [];
+
+    for (const [filePath, { metadata }] of this.fileIndex) {
+      const uses = metadata.uses || [];
+      const usedBy = metadata.usedBy || [];
+
+      const hasInternalDeps = uses.some(u =>
+        u.startsWith('.') || u.startsWith('@/') || u.startsWith('~/')
+      );
+
+      if (!hasInternalDeps) {
+        const isLikelyEntry = /\/(cli|main|index|server|app|page)\.[jt]sx?$/.test(filePath) ||
+                             filePath.startsWith('/bin/') ||
+                             filePath.startsWith('/app/') ||
+                             usedBy.length > 0;
+
+        if (isLikelyEntry || usedBy.length === 0) {
+          entryPoints.push({
+            path: filePath,
+            purpose: metadata.purpose,
+            dependents: usedBy.length
+          });
+        }
+      }
+    }
+
+    return entryPoints.sort((a, b) => b.dependents - a.dependents);
+  }
+
+  // Find isolated clusters - groups of files that only reference each other
+  // with no path to any entry point
+  findClusters() {
+    const entryPointPatterns = [
+      /\/cli\.[jt]sx?$/,
+      /\/main\.[jt]sx?$/,
+      /\/index\.[jt]sx?$/,
+      /\/server\.[jt]sx?$/,
+      /\/app\.[jt]sx?$/,
+      /\/page\.[jt]sx?$/,
+      /^\/bin\//,
+      /^\/app\//,
+      /^\/pages\//,
+      /\/route\.[jt]sx?$/,
+    ];
+
+    // Step 1: Identify entry points
+    const entryPoints = new Set();
+    for (const [filePath, { metadata }] of this.fileIndex) {
+      const isEntryPattern = entryPointPatterns.some(p => p.test(filePath));
+      if (isEntryPattern) {
+        entryPoints.add(filePath);
+      }
+    }
+
+    // Also include files with no usedBy that don't use internal deps
+    for (const [filePath, { metadata }] of this.fileIndex) {
+      const usedBy = metadata.usedBy || [];
+      const uses = metadata.uses || [];
+      if (usedBy.length === 0) {
+        const hasInternalDeps = uses.some(u =>
+          u.startsWith('.') || u.startsWith('@/') || u.startsWith('~/')
+        );
+        if (!hasInternalDeps) {
+          entryPoints.add(filePath);
+        }
+      }
+    }
+
+    // Helper to resolve import paths
+    const resolveImport = (importPath) => {
+      for (const [filePath] of this.fileIndex) {
+        if (filePath === importPath) return filePath;
+      }
+      if (importPath.startsWith('.')) {
+        const baseName = importPath.replace(/^\.\//, '').replace(/^\.\.\//, '');
+        for (const [filePath] of this.fileIndex) {
+          if (filePath.endsWith('/' + baseName + '.js') ||
+              filePath.endsWith('/' + baseName + '.ts') ||
+              filePath.endsWith('/' + baseName + '.tsx') ||
+              filePath.endsWith('/' + baseName) ||
+              filePath.endsWith('/' + baseName + '/index.js') ||
+              filePath.endsWith('/' + baseName + '/index.ts')) {
+            return filePath;
+          }
+        }
+      }
+      for (const [filePath] of this.fileIndex) {
+        if (filePath.includes(importPath)) return filePath;
+      }
+      return null;
+    };
+
+    // Step 2: Find all files reachable from entry points
+    const reachable = new Set();
+    const traverse = (filePath, visited = new Set()) => {
+      if (visited.has(filePath)) return;
+      visited.add(filePath);
+      reachable.add(filePath);
+
+      const entry = this.fileIndex.get(filePath);
+      if (!entry) return;
+
+      for (const dep of entry.metadata.uses || []) {
+        const resolved = resolveImport(dep);
+        if (resolved && this.fileIndex.has(resolved)) {
+          traverse(resolved, visited);
+        }
+      }
+    };
+
+    for (const ep of entryPoints) {
+      traverse(ep);
+    }
+
+    // Step 3: Find isolated files
+    const isolated = new Set();
+    for (const [filePath] of this.fileIndex) {
+      if (!reachable.has(filePath)) {
+        isolated.add(filePath);
+      }
+    }
+
+    if (isolated.size === 0) {
+      return [];
+    }
+
+    // Step 4: Group into clusters
+    const clusters = [];
+    const assigned = new Set();
+
+    const buildCluster = (startFile) => {
+      const cluster = new Set();
+      const queue = [startFile];
+
+      while (queue.length > 0) {
+        const file = queue.shift();
+        if (cluster.has(file) || !isolated.has(file)) continue;
+
+        cluster.add(file);
+        assigned.add(file);
+
+        const entry = this.fileIndex.get(file);
+        if (!entry) continue;
+
+        for (const dep of entry.metadata.uses || []) {
+          const resolved = resolveImport(dep);
+          if (resolved && isolated.has(resolved) && !cluster.has(resolved)) {
+            queue.push(resolved);
+          }
+        }
+
+        for (const user of entry.metadata.usedBy || []) {
+          if (isolated.has(user) && !cluster.has(user)) {
+            queue.push(user);
+          }
+        }
+      }
+
+      return cluster;
+    };
+
+    for (const file of isolated) {
+      if (!assigned.has(file)) {
+        const cluster = buildCluster(file);
+        if (cluster.size > 0) {
+          const clusterFiles = Array.from(cluster).map(f => {
+            const entry = this.fileIndex.get(f);
+            return {
+              path: f,
+              purpose: entry?.metadata?.purpose || '',
+              uses: entry?.metadata?.uses?.length || 0,
+              usedBy: entry?.metadata?.usedBy?.length || 0
+            };
+          }).sort((a, b) => a.path.localeCompare(b.path));
+
+          clusters.push({
+            size: clusterFiles.length,
+            files: clusterFiles
+          });
+        }
+      }
+    }
+
+    return clusters.sort((a, b) => b.size - a.size);
+  }
+
+  // Full graph analysis
+  analyzeGraph() {
+    return {
+      totalFiles: this.fileIndex.size,
+      entryPoints: this.findEntryPoints(),
+      orphans: this.findOrphans(),
+      cycles: this.findCycles(),
+      clusters: this.findClusters()
+    };
+  }
 }
 
 // ============================================================================
@@ -302,6 +600,20 @@ const TOOLS = [
         }
       },
       required: ['query']
+    }
+  },
+  {
+    name: 'docmeta_graph',
+    description: 'Analyze the dependency graph to find cycles (circular dependencies), orphans (dead code candidates), clusters (isolated dead code groups), and entry points (roots). Use this to understand codebase health and find issues.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        analysis: {
+          type: 'string',
+          enum: ['full', 'cycles', 'orphans', 'clusters', 'entry_points'],
+          description: 'Type of analysis: "full" for everything, "cycles" for circular deps, "orphans" for dead code, "clusters" for isolated dead code groups, "entry_points" for roots'
+        }
+      }
     }
   }
 ];
@@ -488,6 +800,89 @@ class MCPServer {
             text: results.length > 0
               ? JSON.stringify(results, null, 2)
               : `No files found matching: "${args.query}"`
+          }]
+        };
+        break;
+      }
+
+      case 'docmeta_graph': {
+        const analysisType = args.analysis || 'full';
+        let response;
+
+        switch (analysisType) {
+          case 'cycles':
+            const cycles = this.index.findCycles();
+            response = {
+              count: cycles.length,
+              cycles,
+              message: cycles.length === 0
+                ? 'No circular dependencies found!'
+                : `Found ${cycles.length} circular ${cycles.length === 1 ? 'dependency' : 'dependencies'}`
+            };
+            break;
+
+          case 'orphans':
+            const orphans = this.index.findOrphans();
+            response = {
+              count: orphans.length,
+              orphans,
+              message: orphans.length === 0
+                ? 'No orphan files found - all code is used!'
+                : `Found ${orphans.length} dead code candidates`
+            };
+            break;
+
+          case 'entry_points':
+            const entryPoints = this.index.findEntryPoints();
+            response = {
+              count: entryPoints.length,
+              entryPoints,
+              message: `Found ${entryPoints.length} entry points`
+            };
+            break;
+
+          case 'clusters':
+            const clusters = this.index.findClusters();
+            const totalClusterFiles = clusters.reduce((sum, c) => sum + c.size, 0);
+            response = {
+              count: clusters.length,
+              totalFiles: totalClusterFiles,
+              clusters,
+              message: clusters.length === 0
+                ? 'No isolated clusters found - all code is reachable from entry points!'
+                : `Found ${clusters.length} isolated ${clusters.length === 1 ? 'cluster' : 'clusters'} with ${totalClusterFiles} total files`
+            };
+            break;
+
+          case 'full':
+          default:
+            const analysis = this.index.analyzeGraph();
+            const clusterFileCount = analysis.clusters.reduce((sum, c) => sum + c.size, 0);
+            response = {
+              ...analysis,
+              summary: {
+                totalFiles: analysis.totalFiles,
+                entryPointCount: analysis.entryPoints.length,
+                orphanCount: analysis.orphans.length,
+                cycleCount: analysis.cycles.length,
+                clusterCount: analysis.clusters.length,
+                clusterFileCount,
+                health: analysis.cycles.length === 0 && analysis.orphans.length < 5 && analysis.clusters.length === 0
+                  ? 'good'
+                  : analysis.cycles.length > 0
+                    ? 'has circular dependencies'
+                    : analysis.clusters.length > 0
+                      ? 'has isolated dead code clusters'
+                      : 'has dead code'
+              }
+            };
+            break;
+        }
+
+        result = {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(response, null, 2)
           }]
         };
         break;

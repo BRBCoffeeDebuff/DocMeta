@@ -9,6 +9,7 @@
         "./setup.js",
         "./init.js",
         "./usedby.js",
+        "./graph.js",
         "./update.js",
         "./ignore.js",
         "./check.js",
@@ -77,7 +78,8 @@
         "./lib/subagent",
         "./lib/ignores",
         "./init.js",
-        "./usedby.js"
+        "./usedby.js",
+        "./graph.js"
       ],
       "usedBy": [
         "/bin/cli.js"
@@ -123,9 +125,47 @@
       "usedBy": [
         "/bin/cli.js"
       ]
+    },
+    "graph.js": {
+      "purpose": "Dependency graph analysis CLI. Detects cycles (circular dependencies), orphans (dead code candidates), entry points, and calculates transitive blast radius for impact analysis.",
+      "exports": [],
+      "uses": [],
+      "usedBy": [
+        "/bin/cli.js",
+        "/bin/setup.js"
+      ]
     }
   },
   "history": [
+    [
+      "2026-01-12T04:23:16.607Z",
+      "Sync: refreshed 2 file(s)",
+      [
+        "cli.js",
+        "setup.js"
+      ]
+    ],
+    [
+      "2026-01-12T04:19:13.303Z",
+      "Created graph command with cycle detection, orphan detection, entry point identification, and transitive blast radius analysis",
+      [
+        "graph.js"
+      ]
+    ],
+    [
+      "2026-01-12T04:19:03.783Z",
+      "Sync: added 1 file(s)",
+      [
+        "graph.js"
+      ]
+    ],
+    [
+      "2026-01-12T04:05:31.144Z",
+      "Added Go and Rust import/export support: extractGoExports/Imports for uppercase exports and internal packages, extractRustExports/Imports for pub items and crate:: references",
+      [
+        "init.js"
+      ]
+    ],
     [
       "2026-01-12T03:47:04.359Z",
       "Replaced static MCP_CONFIG with getMcpConfig() function that detects local mcp-server.js and uses absolute path with node command, falls back to npx for published package",
@@ -174,35 +214,7 @@
       [
         "crawl.js"
       ]
-    ],
-    [
-      "2026-01-11T23:10:24.197Z",
-      "Changed placeholder from _TODO_ to [purpose]",
-      [
-        "check.js"
-      ]
-    ],
-    [
-      "2026-01-11T23:10:24.100Z",
-      "Changed placeholder from _TODO_ to [purpose]",
-      [
-        "update.js"
-      ]
-    ],
-    [
-      "2026-01-11T23:10:19.019Z",
-      "Changed placeholder from _TODO_ to [purpose]",
-      [
-        "init.js"
-      ]
-    ],
-    [
-      "2026-01-11T23:05:05.634Z",
-      "Added crawl command to CLI",
-      [
-        "cli.js"
-      ]
     ]
   ],
-  "updated": "2026-01-12T03:47:09.219Z"
+  "updated": "2026-01-12T04:23:20.854Z"
 }
