@@ -265,7 +265,7 @@ Prompt: "Sync documentation after [describe what you changed]"
 The agent will run the full workflow:
 1. \`docmeta update --sync\` - Add new files, remove deleted
 2. \`docmeta usedby\` - Rebuild dependency graph
-3. \`docmeta graph\` - Check for cycles, orphans, entry points
+3. \`docmeta graph\` - Check for cycles, orphans, clusters, entry points
 4. \`docmeta check\` - Verify documentation health
 
 ### Before Modifying Code
@@ -282,8 +282,9 @@ docmeta update <file> --history "what changed"  # Add history entry
 docmeta update <file> --purpose "description"   # Update purpose
 docmeta update --sync                           # Sync with filesystem
 docmeta usedby                                  # Rebuild dependencies
-docmeta graph                                   # Find cycles, orphans, entry points
+docmeta graph                                   # Find cycles, orphans, clusters, entry points
 docmeta graph --blast-radius <file>             # What breaks if I change this?
+docmeta graph --clusters                        # Find isolated dead code groups
 docmeta check                                   # Find issues
 \`\`\`
 

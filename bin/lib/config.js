@@ -18,6 +18,41 @@ const DEFAULT_CONFIG = {
   customIgnoreFiles: [],     // Extra files to ignore
   customIgnorePatterns: [],  // Extra patterns (strings, converted to regex)
 
+  // Entry point patterns for cluster detection (framework-specific)
+  // Files matching these patterns are considered entry points even if nothing imports them
+  // Default patterns cover common frameworks (Next.js, etc.)
+  entryPointPatterns: [
+    // Next.js / App Router
+    'app/**/route.ts',       // API routes
+    'app/**/route.js',
+    'app/**/page.tsx',       // Pages
+    'app/**/page.jsx',
+    'app/**/layout.tsx',     // Layouts
+    'app/**/layout.jsx',
+    'pages/**/*.tsx',        // Pages Router
+    'pages/**/*.jsx',
+    'pages/api/**/*.ts',     // API routes (Pages Router)
+    'pages/api/**/*.js',
+    // CLI and scripts
+    'bin/**/*.js',
+    'scripts/**/*.js',
+    'scripts/**/*.ts',
+    // Common entry files
+    '**/cli.js',
+    '**/cli.ts',
+    '**/main.js',
+    '**/main.ts',
+    '**/index.js',
+    '**/index.ts',
+    '**/server.js',
+    '**/server.ts',
+    '**/app.js',
+    '**/app.ts',
+  ],
+
+  // User-customizable entry point patterns (added to defaults)
+  customEntryPointPatterns: [],
+
   // Legacy config (used by init.js directly)
   ignoreDirs: [
     'node_modules', '.git', '.next', 'dist', 'build', '.vercel',
@@ -58,16 +93,33 @@ const CONFIG_FILENAME = process.env.DOCMETA_CONFIG || '.docmetarc.json';
 
 /**
  * Load configuration from .docmetarc.json or return defaults
+ * Returns a deep copy to prevent mutation of defaults
  */
 function loadConfig(rootPath = process.cwd()) {
   const configPath = path.join(rootPath, CONFIG_FILENAME);
 
+  // Deep clone default config to prevent mutation
+  const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG, (key, value) => {
+    // RegExp objects can't be JSON serialized, handle them specially
+    if (value instanceof RegExp) {
+      return { __regexp: value.source, __flags: value.flags };
+    }
+    return value;
+  }));
+
+  // Restore RegExp objects
+  if (config.ignorePatterns) {
+    config.ignorePatterns = config.ignorePatterns.map(p =>
+      p.__regexp ? new RegExp(p.__regexp, p.__flags) : p
+    );
+  }
+
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
     const userConfig = JSON.parse(content);
-    return { ...DEFAULT_CONFIG, ...userConfig };
+    return { ...config, ...userConfig };
   } catch {
-    return DEFAULT_CONFIG;
+    return config;
   }
 }
 

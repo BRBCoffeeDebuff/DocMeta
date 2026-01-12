@@ -43,7 +43,7 @@ When asked to update documentation:
    - \`history\`: Add entry for significant changes
 
 4. **Run \`docmeta usedby\`** after changing \`uses\` arrays
-5. **Run \`docmeta graph\`** to check for cycles, orphans, entry points
+5. **Run \`docmeta graph\`** to check for cycles, orphans, clusters, entry points
 6. **Run \`docmeta check\`** to verify no issues
 
 ## Writing Good Purposes
@@ -82,8 +82,9 @@ ${ignoreFiles.length > 15 ? `- ... and ${ignoreFiles.length - 15} more` : ''}
 - \`docmeta update <file> --history "what changed"\` - Add history entry
 - \`docmeta update --sync\` - Add new files, remove deleted ones
 - \`docmeta usedby\` - Rebuild all usedBy relationships
-- \`docmeta graph\` - Analyze graph (cycles, orphans, entry points)
+- \`docmeta graph\` - Analyze graph (cycles, orphans, clusters, entry points)
 - \`docmeta graph --blast-radius <file>\` - Full impact analysis
+- \`docmeta graph --clusters\` - Find isolated dead code groups
 - \`docmeta check\` - Find documentation issues
 
 ## Example Task
@@ -119,7 +120,7 @@ This project uses DocMeta for living documentation. Each folder with code has a 
 docmeta update <file> --history "what changed"  # Add history entry
 docmeta update --sync                           # Sync new/deleted files
 docmeta usedby                                  # Rebuild dependencies
-docmeta graph                                   # Check for cycles/orphans
+docmeta graph                                   # Check for cycles/orphans/clusters
 \`\`\`
 
 This ensures documentation stays in sync with the code. These commands will:
@@ -127,7 +128,7 @@ This ensures documentation stays in sync with the code. These commands will:
 - Sync exports and uses arrays
 - Add history entries with timestamps
 - Rebuild the usedBy dependency graph
-- Detect circular dependencies and dead code
+- Detect circular dependencies, dead code, and isolated clusters
 
 ### Before Modifying Code
 
@@ -143,8 +144,9 @@ docmeta update <file> --purpose "description"  # Update purpose
 docmeta update <file> --history "what changed" # Add history
 docmeta update --sync                          # Sync with filesystem
 docmeta usedby                                 # Rebuild dependencies
-docmeta graph                                  # Find cycles, orphans, entry points
+docmeta graph                                  # Find cycles, orphans, clusters, entry points
 docmeta graph --blast-radius <file>            # Full impact analysis
+docmeta graph --clusters                       # Find isolated dead code groups
 docmeta check                                  # Find issues
 \`\`\`
 
@@ -234,9 +236,10 @@ After code files have been created, edited, or deleted, you must update the DocM
    This will identify:
    - **Cycles**: Circular dependencies that may cause issues
    - **Orphans**: Dead code candidates (files not used by anything)
+   - **Clusters**: Isolated groups of dead code (files only referencing each other)
    - **Entry Points**: Root files where execution starts
 
-   Report any cycles or orphans found so they can be addressed.
+   Report any cycles, orphans, or clusters found so they can be addressed.
 
 6. **Verify Documentation Health**: Run:
    \`\`\`bash

@@ -89,13 +89,28 @@ docmeta graph --output graph.json      # Export for tooling
 
 ```bash
 docmeta init [path]                    # Create .docmeta.json scaffolds
-docmeta usedby [path]                  # Populate usedBy fields
+docmeta usedby [path]                  # Populate usedBy fields (imports)
+docmeta calls [path]                   # Populate calls/calledBy fields (HTTP APIs)
 docmeta update <file> --purpose "..."  # Set a file's purpose
 docmeta update <file> --history "..."  # Add a history entry
 docmeta update --sync                  # Sync with filesystem
 docmeta crawl                          # Fill in [purpose] placeholders
 docmeta check                          # Find stale/incomplete docs
 ```
+
+### HTTP API Dependencies (Next.js, etc.)
+
+For frameworks like Next.js where components call API routes via `fetch`/`axios`:
+
+```bash
+docmeta calls                          # Scan for fetch/axios calls to /api/*
+```
+
+This creates bidirectional links:
+- `calls` — API routes this file calls (e.g., `["/app/api/users/route.ts"]`)
+- `calledBy` — Files that call this route via HTTP
+
+The graph analysis uses both import dependencies (`usedBy`) and HTTP dependencies (`calledBy`) to find dead code and calculate blast radius.
 
 ### MCP Server
 
@@ -114,7 +129,9 @@ docmeta mcp                            # Start MCP server for Claude Code
       "purpose": "JWT token generation, validation, and refresh logic",
       "exports": ["createToken", "validateToken", "refreshToken"],
       "uses": ["./config", "@/lib/crypto"],
-      "usedBy": ["/app/api/login/route.ts", "/middleware.ts"]
+      "usedBy": ["/app/api/login/route.ts", "/middleware.ts"],
+      "calls": ["/app/api/session/route.ts"],
+      "calledBy": []
     }
   },
   "history": [
@@ -123,6 +140,10 @@ docmeta mcp                            # Start MCP server for Claude Code
   "updated": "2025-01-10T14:30:00Z"
 }
 ```
+
+**Dependency fields:**
+- `uses` / `usedBy` — Import dependencies (what this file imports / what imports this)
+- `calls` / `calledBy` — HTTP dependencies (API routes called via fetch/axios)
 
 ### The Key Field: `usedBy`
 
@@ -142,6 +163,18 @@ DocMeta works with any language. The CLI auto-detects imports/exports for:
 - Rust
 
 For other languages, scaffolds are created and Claude fills in the details.
+
+### TypeScript Path Aliases
+
+DocMeta supports common TypeScript path aliases out of the box:
+- `@/` → project root (e.g., `@/lib/auth` → `/lib/auth.ts`)
+- `~/` → project root (e.g., `~/utils` → `/utils/index.ts`)
+
+**Limitation:** DocMeta does not read `tsconfig.json`. Custom path mappings like `@components/*` or non-root `baseUrl` settings are not automatically resolved. Files using custom aliases will show as unresolved imports.
+
+For projects with custom aliases, you can:
+1. Use the standard `@/` convention pointing to project root
+2. Manually update the `uses`/`usedBy` fields for files with custom aliases
 
 ## MCP Integration
 
@@ -183,9 +216,34 @@ Create `.docmetarc.json` in your project root:
 {
   "maxHistoryEntries": 15,
   "customIgnoreDirs": ["generated", "vendor"],
-  "customIgnoreFiles": ["*.generated.ts"]
+  "customIgnoreFiles": ["*.generated.ts"],
+  "customEntryPointPatterns": [
+    "app/**/page.tsx",
+    "app/**/route.ts",
+    "app/**/layout.tsx"
+  ]
 }
 ```
+
+### Entry Point Patterns
+
+Entry points are files that don't need to be imported (frameworks call them directly). Configure patterns to prevent false positives in dead code detection:
+
+```json
+{
+  "customEntryPointPatterns": [
+    "app/**/page.tsx",
+    "app/**/route.ts",
+    "app/**/layout.tsx",
+    "scripts/**/*.ts",
+    "bin/**/*.js"
+  ]
+}
+```
+
+Patterns support:
+- `**` — matches zero or more directories
+- `*` — matches any filename characters
 
 ## FAQ
 

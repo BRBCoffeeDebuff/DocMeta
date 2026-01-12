@@ -27,24 +27,32 @@ After code files have been created, edited, or deleted, you must update the DocM
    ```
    This ensures new files are added to documentation and deleted files are removed.
 
-4. **Rebuild Dependencies**: Run:
+4. **Rebuild Import Dependencies**: Run:
    ```bash
    docmeta usedby
    ```
    This rebuilds the `usedBy` dependency graph to reflect any changes in imports/exports.
 
-5. **Analyze Graph Health** (optional but recommended for significant changes): Run:
+5. **Rebuild HTTP API Dependencies** (for Next.js and similar frameworks): Run:
+   ```bash
+   docmeta calls
+   ```
+   This detects fetch/axios calls to `/api/*` endpoints and populates `calledBy` arrays in route files.
+   Skip this step if the project doesn't have API routes.
+
+6. **Analyze Graph Health** (optional but recommended for significant changes): Run:
    ```bash
    docmeta graph
    ```
    This will identify:
    - **Cycles**: Circular dependencies that may cause issues
    - **Orphans**: Dead code candidates (files not used by anything)
+   - **Clusters**: Isolated groups of dead code (files only referencing each other)
    - **Entry Points**: Root files where execution starts
 
-   Report any cycles or orphans found so they can be addressed.
+   Report any cycles, orphans, or clusters found so they can be addressed.
 
-6. **Verify Documentation Health**: Run:
+7. **Verify Documentation Health**: Run:
    ```bash
    docmeta check
    ```
@@ -85,6 +93,7 @@ When `docmeta check` reports files with `[purpose]` placeholders, or when runnin
 5. **After filling purposes, always run**:
    ```bash
    docmeta usedby
+   docmeta calls  # If project has API routes
    docmeta check
    ```
 
@@ -122,6 +131,7 @@ docmeta update src/hooks/useDebounce.ts --purpose "React hook that debounces rap
 
 # Rebuild and verify
 docmeta usedby
+docmeta calls  # Rebuild HTTP API dependencies if applicable
 docmeta graph  # Check for cycles, orphans, entry points
 docmeta check
 ```

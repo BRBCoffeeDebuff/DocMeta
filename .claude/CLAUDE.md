@@ -19,9 +19,10 @@ Prompt: "Sync documentation after [describe what you changed]"
 
 The agent will run the full workflow:
 1. `docmeta update --sync` - Add new files, remove deleted
-2. `docmeta usedby` - Rebuild dependency graph
-3. `docmeta graph` - Check for cycles, orphans, entry points
-4. `docmeta check` - Verify documentation health
+2. `docmeta usedby` - Rebuild import dependency graph
+3. `docmeta calls` - Rebuild HTTP API dependency graph (fetch/axios calls)
+4. `docmeta graph` - Check for cycles, orphans, clusters, entry points
+5. `docmeta check` - Verify documentation health
 
 ### Before Modifying Code
 
@@ -35,16 +36,20 @@ The agent will run the full workflow:
 docmeta update <file> --history "what changed"  # Add history entry
 docmeta update <file> --purpose "description"   # Update purpose
 docmeta update --sync                           # Sync with filesystem
-docmeta usedby                                  # Rebuild dependencies
-docmeta graph                                   # Find cycles, orphans, entry points
+docmeta usedby                                  # Rebuild import dependencies
+docmeta calls                                 # Rebuild HTTP API dependencies
+docmeta graph                                   # Find cycles, orphans, clusters, entry points
 docmeta graph --blast-radius <file>             # What breaks if I change this?
+docmeta graph --clusters                        # Find isolated dead code groups
 docmeta check                                   # Find issues
 ```
 
-### Key Insight: usedBy
+### Key Insight: usedBy and calledBy
 
-The `usedBy` field shows your **blast radius** - what might break if you change this file.
-Always check it before making breaking changes to exports.
+The `usedBy` field shows import dependencies - what might break if you change this file's exports.
+The `calledBy` field shows HTTP API callers - what frontend code calls this route via fetch/axios.
+
+Both contribute to the **blast radius** - always check before making breaking changes.
 
 ### Why This Matters
 

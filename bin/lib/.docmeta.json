@@ -47,6 +47,13 @@
   },
   "history": [
     [
+      "2026-01-12T04:56:13.406Z",
+      "Added entryPointPatterns and customEntryPointPatterns to DEFAULT_CONFIG, fixed loadConfig deep copy bug",
+      [
+        "config.js"
+      ]
+    ],
+    [
       "2026-01-11T23:26:47.599Z",
       "Sync: refreshed 4 file(s)",
       [
@@ -111,16 +118,7 @@
       [
         "registry.js"
       ]
-    ],
-    [
-      "2026-01-11",
-      "Added exports and usedBy references for all lib modules",
-      [
-        "config.js",
-        "ignores.js",
-        "subagent.js"
-      ]
     ]
   ],
-  "updated": "2026-01-12T04:23:20.854Z"
+  "updated": "2026-01-12T04:56:20.688Z"
 }

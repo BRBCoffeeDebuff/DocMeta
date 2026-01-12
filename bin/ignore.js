@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * docmeta ignore - Manage ignore patterns
+ * docmeta ignore - Manage ignore and entry point patterns
  *
  * Usage:
- *   docmeta ignore                     # List all ignore patterns
- *   docmeta ignore --add-dir <name>    # Add directory to ignore
- *   docmeta ignore --add-file <name>   # Add file pattern to ignore
- *   docmeta ignore --add-pattern <pat> # Add regex pattern to ignore
- *   docmeta ignore --remove <name>     # Remove from custom ignores
- *   docmeta ignore --reset             # Reset to defaults (remove custom)
+ *   docmeta ignore                       # List all ignore patterns
+ *   docmeta ignore --add-dir <name>      # Add directory to ignore
+ *   docmeta ignore --add-file <name>     # Add file pattern to ignore
+ *   docmeta ignore --add-pattern <pat>   # Add regex pattern to ignore
+ *   docmeta ignore --add-entry <pattern> # Add entry point pattern (glob)
+ *   docmeta ignore --remove <name>       # Remove from custom ignores/entries
+ *   docmeta ignore --reset               # Reset to defaults (remove custom)
  */
 
 const fs = require('fs');
@@ -52,6 +53,7 @@ function parseArgs(args) {
     addDir: null,
     addFile: null,
     addPattern: null,
+    addEntry: null,
     remove: null,
     reset: false,
     list: false,
@@ -67,6 +69,8 @@ function parseArgs(args) {
       result.addFile = args[++i];
     } else if (arg === '--add-pattern' || arg === '-p') {
       result.addPattern = args[++i];
+    } else if (arg === '--add-entry' || arg === '-e') {
+      result.addEntry = args[++i];
     } else if (arg === '--remove' || arg === '-r') {
       result.remove = args[++i];
     } else if (arg === '--reset') {
@@ -80,7 +84,7 @@ function parseArgs(args) {
 
   // Default to list if no action specified
   if (!result.addDir && !result.addFile && !result.addPattern &&
-      !result.remove && !result.reset && !result.help) {
+      !result.addEntry && !result.remove && !result.reset && !result.help) {
     result.list = true;
   }
 
@@ -99,23 +103,27 @@ function listIgnores(rootPath) {
     customIgnorePatterns: config.customIgnorePatterns,
   });
 
-  printHeader('DocMeta Ignore Patterns');
+  printHeader('DocMeta Ignore & Entry Point Patterns');
 
   // Show custom ignores first (user-added)
   const customDirs = config.customIgnoreDirs || [];
   const customFiles = config.customIgnoreFiles || [];
   const customPatterns = config.customIgnorePatterns || [];
+  const customEntryPoints = config.customEntryPointPatterns || [];
 
-  if (customDirs.length > 0 || customFiles.length > 0 || customPatterns.length > 0) {
-    print(`${colors.cyan}Custom ignores${colors.reset} (from .docmetarc.json):`);
+  if (customDirs.length > 0 || customFiles.length > 0 || customPatterns.length > 0 || customEntryPoints.length > 0) {
+    print(`${colors.cyan}Custom settings${colors.reset} (from .docmetarc.json):`);
     if (customDirs.length > 0) {
-      print(`  Directories: ${customDirs.join(', ')}`);
+      print(`  Ignored directories: ${customDirs.join(', ')}`);
     }
     if (customFiles.length > 0) {
-      print(`  Files: ${customFiles.join(', ')}`);
+      print(`  Ignored files: ${customFiles.join(', ')}`);
     }
     if (customPatterns.length > 0) {
-      print(`  Patterns: ${customPatterns.join(', ')}`);
+      print(`  Ignored patterns: ${customPatterns.join(', ')}`);
+    }
+    if (customEntryPoints.length > 0) {
+      print(`  Entry point patterns: ${customEntryPoints.join(', ')}`);
     }
     print('');
   }
@@ -132,6 +140,13 @@ function listIgnores(rootPath) {
   print(`${colors.cyan}Ignore patterns${colors.reset} (${ignores.patterns.length} regex patterns)`);
   print('');
 
+  // Show entry point patterns
+  const defaultEntryPoints = config.entryPointPatterns || DEFAULT_CONFIG.entryPointPatterns || [];
+  const allEntryPoints = [...defaultEntryPoints, ...customEntryPoints];
+  print(`${colors.cyan}Entry point patterns${colors.reset} (${allEntryPoints.length} patterns for graph analysis):`);
+  print(`  ${colors.dim}${allEntryPoints.slice(0, 8).join(', ')}${allEntryPoints.length > 8 ? `, ... +${allEntryPoints.length - 8} more` : ''}${colors.reset}`);
+  print('');
+
   // Check for .gitignore
   const gitignorePath = path.join(rootPath, '.gitignore');
   if (fs.existsSync(gitignorePath)) {
@@ -139,10 +154,11 @@ function listIgnores(rootPath) {
   }
 
   print('');
-  print('To add custom ignores:');
-  print(`  ${colors.bright}docmeta ignore --add-dir <name>${colors.reset}     Add directory`);
-  print(`  ${colors.bright}docmeta ignore --add-file <pattern>${colors.reset}  Add file pattern`);
-  print(`  ${colors.bright}docmeta ignore --add-pattern <regex>${colors.reset} Add regex pattern`);
+  print('Commands:');
+  print(`  ${colors.bright}docmeta ignore --add-dir <name>${colors.reset}       Add ignored directory`);
+  print(`  ${colors.bright}docmeta ignore --add-file <pattern>${colors.reset}   Add ignored file pattern`);
+  print(`  ${colors.bright}docmeta ignore --add-pattern <regex>${colors.reset}  Add ignored regex pattern`);
+  print(`  ${colors.bright}docmeta ignore --add-entry <glob>${colors.reset}     Add entry point pattern (e.g., "api/**/handler.ts")`);
   print('');
 }
 
@@ -153,6 +169,7 @@ function addIgnore(rootPath, type, value) {
   if (!config.customIgnoreDirs) config.customIgnoreDirs = [];
   if (!config.customIgnoreFiles) config.customIgnoreFiles = [];
   if (!config.customIgnorePatterns) config.customIgnorePatterns = [];
+  if (!config.customEntryPointPatterns) config.customEntryPointPatterns = [];
 
   let targetArray;
   let typeName;
@@ -177,6 +194,15 @@ function addIgnore(rootPath, type, value) {
         return false;
       }
       break;
+    case 'entry':
+      targetArray = config.customEntryPointPatterns;
+      typeName = 'entry point pattern';
+      // Validate glob pattern (basic check)
+      if (!value || value.trim().length === 0) {
+        printError('Entry point pattern cannot be empty');
+        return false;
+      }
+      break;
   }
 
   if (targetArray.includes(value)) {
@@ -190,6 +216,10 @@ function addIgnore(rootPath, type, value) {
   printSuccess(`Added "${value}" to custom ${typeName}s`);
   print(`  Saved to .docmetarc.json`);
 
+  if (type === 'entry') {
+    print(`  Files matching this pattern will be treated as entry points in graph analysis.`);
+  }
+
   return true;
 }
 
@@ -198,8 +228,8 @@ function removeIgnore(rootPath, value) {
 
   let found = false;
 
-  // Try to remove from each list
-  for (const key of ['customIgnoreDirs', 'customIgnoreFiles', 'customIgnorePatterns']) {
+  // Try to remove from each list (including entry point patterns)
+  for (const key of ['customIgnoreDirs', 'customIgnoreFiles', 'customIgnorePatterns', 'customEntryPointPatterns']) {
     if (config[key] && config[key].includes(value)) {
       config[key] = config[key].filter(v => v !== value);
       found = true;
@@ -207,15 +237,15 @@ function removeIgnore(rootPath, value) {
   }
 
   if (!found) {
-    printError(`"${value}" not found in custom ignores`);
+    printError(`"${value}" not found in custom settings`);
     print('');
-    print('Note: You can only remove custom ignores, not defaults.');
-    print('To see custom ignores, run: docmeta ignore --list');
+    print('Note: You can only remove custom ignores/entry patterns, not defaults.');
+    print('To see custom settings, run: docmeta ignore --list');
     return false;
   }
 
   saveConfig(config, rootPath);
-  printSuccess(`Removed "${value}" from custom ignores`);
+  printSuccess(`Removed "${value}" from custom settings`);
 
   return true;
 }
@@ -226,10 +256,11 @@ function resetIgnores(rootPath) {
   config.customIgnoreDirs = [];
   config.customIgnoreFiles = [];
   config.customIgnorePatterns = [];
+  config.customEntryPointPatterns = [];
 
   saveConfig(config, rootPath);
-  printSuccess('Reset custom ignores to empty');
-  print('  Default ignores still apply');
+  printSuccess('Reset custom ignores and entry points to empty');
+  print('  Default ignores and entry point patterns still apply');
 
   return true;
 }
@@ -239,33 +270,44 @@ function resetIgnores(rootPath) {
 // ============================================================================
 
 const HELP = `
-docmeta ignore - Manage ignore patterns
+docmeta ignore - Manage ignore and entry point patterns
 
 Usage:
-  docmeta ignore                        List all ignore patterns
+  docmeta ignore                        List all patterns
   docmeta ignore --add-dir <name>       Add directory to ignore
   docmeta ignore --add-file <pattern>   Add file pattern to ignore
   docmeta ignore --add-pattern <regex>  Add regex pattern to ignore
-  docmeta ignore --remove <name>        Remove from custom ignores
-  docmeta ignore --reset                Reset custom ignores to empty
+  docmeta ignore --add-entry <glob>     Add entry point pattern (for graph analysis)
+  docmeta ignore --remove <name>        Remove from custom settings
+  docmeta ignore --reset                Reset custom settings to empty
 
 Options:
   --add-dir, -d      Add a directory name to ignore (e.g., "vendor", "lib")
   --add-file, -f     Add a file pattern to ignore (e.g., "*.generated.ts")
   --add-pattern, -p  Add a regex pattern to ignore (e.g., "\\.stories\\.")
-  --remove, -r       Remove a pattern from custom ignores
-  --reset            Clear all custom ignores (keeps defaults)
-  --list, -l         List all ignore patterns (default)
+  --add-entry, -e    Add an entry point pattern (glob) for graph analysis
+  --remove, -r       Remove a pattern from custom settings
+  --reset            Clear all custom settings (keeps defaults)
+  --list, -l         List all patterns (default)
   --help, -h         Show this help
 
 Examples:
-  docmeta ignore --add-dir vendor           # Ignore vendor/ directories
-  docmeta ignore --add-file "*.gen.ts"      # Ignore generated TS files
-  docmeta ignore --add-pattern "\\.story\\." # Ignore Storybook files
-  docmeta ignore --remove vendor            # Stop ignoring vendor/
+  docmeta ignore --add-dir vendor                  # Ignore vendor/ directories
+  docmeta ignore --add-file "*.gen.ts"             # Ignore generated TS files
+  docmeta ignore --add-pattern "\\.story\\."       # Ignore Storybook files
+  docmeta ignore --add-entry "api/**/handler.ts"   # Mark as entry points
+  docmeta ignore --add-entry "workers/**/*.js"     # Workers are entry points
+  docmeta ignore --remove vendor                   # Remove custom setting
 
-Custom ignores are saved to .docmetarc.json and merged with:
+Entry Point Patterns:
+  Entry points are files that frameworks call directly (Next.js routes, workers, etc.).
+  They don't need to be imported by other code to be considered "used".
+  Default patterns include: app/**/route.ts, app/**/page.tsx, bin/**/*.js, etc.
+  Add custom patterns for framework-specific entry points in your project.
+
+Custom settings are saved to .docmetarc.json and merged with:
   - Default ignores (node_modules, dist, .env, etc.)
+  - Default entry point patterns (Next.js routes, etc.)
   - Patterns from .gitignore (auto-loaded)
 `;
 
@@ -286,6 +328,8 @@ function main() {
     addIgnore(rootPath, 'file', options.addFile);
   } else if (options.addPattern) {
     addIgnore(rootPath, 'pattern', options.addPattern);
+  } else if (options.addEntry) {
+    addIgnore(rootPath, 'entry', options.addEntry);
   } else if (options.remove) {
     removeIgnore(rootPath, options.remove);
   } else if (options.reset) {

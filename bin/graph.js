@@ -22,8 +22,58 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadConfig } = require('./lib/config');
 
 const IGNORE_DIRS = ['node_modules', '.git', '.next', 'dist', 'build', '__pycache__', 'venv', '.venv'];
+
+// ============================================================================
+// Entry Point Pattern Utilities
+// ============================================================================
+
+/**
+ * Convert a glob pattern to a regex
+ * Supports: ** (any path), * (any name), and exact matches
+ */
+function globToRegex(pattern) {
+  // Escape regex special chars except *
+  let regex = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // Escape special chars
+    .replace(/\*\*\//g, '{{GLOBSTAR_SLASH}}')  // **/ matches zero or more dirs
+    .replace(/\*\*/g, '{{GLOBSTAR}}')          // ** matches anything including /
+    .replace(/\*/g, '[^/]*')                   // * matches anything except /
+    .replace(/\{\{GLOBSTAR_SLASH\}\}/g, '(?:.*/)?')  // **/ = optional dirs with trailing slash
+    .replace(/\{\{GLOBSTAR\}\}/g, '.*');       // ** matches anything including /
+
+  // Anchor appropriately
+  if (!pattern.startsWith('*')) {
+    regex = '/' + regex;  // Must start with /
+  }
+  if (pattern.endsWith('.js') || pattern.endsWith('.ts') || pattern.endsWith('.tsx') || pattern.endsWith('.jsx')) {
+    regex = regex + '$';  // Exact extension match
+  }
+
+  return new RegExp(regex);
+}
+
+/**
+ * Build entry point patterns from config
+ * Combines default patterns with custom user patterns
+ */
+function buildEntryPointPatterns(config) {
+  const patterns = [
+    ...(config.entryPointPatterns || []),
+    ...(config.customEntryPointPatterns || [])
+  ];
+
+  return patterns.map(p => {
+    try {
+      return globToRegex(p);
+    } catch {
+      // If pattern is invalid, skip it
+      return null;
+    }
+  }).filter(Boolean);
+}
 
 // ============================================================================
 // DocMeta Loading (similar to usedby.js and mcp-server.js)
@@ -76,7 +126,7 @@ function findDocMetaFiles(rootPath) {
 function buildGraph(rootPath) {
   const docMetaFiles = findDocMetaFiles(rootPath);
 
-  // nodes: Map of filePath -> { purpose, exports, uses, usedBy }
+  // nodes: Map of filePath -> { purpose, exports, uses, usedBy, calls, calledBy }
   const nodes = new Map();
 
   for (const docMetaPath of docMetaFiles) {
@@ -92,7 +142,10 @@ function buildGraph(rootPath) {
           purpose: fileData.purpose || '',
           exports: fileData.exports || [],
           uses: fileData.uses || [],
-          usedBy: fileData.usedBy || []
+          usedBy: fileData.usedBy || [],
+          // v3: HTTP API call dependencies
+          calls: fileData.calls || [],
+          calledBy: fileData.calledBy || []
         });
       }
     } catch {
@@ -210,29 +263,20 @@ function findCycles(nodes) {
 }
 
 /**
- * Find orphan files - files that have no usedBy (not used by anything)
+ * Find orphan files - files that have no usedBy AND no calledBy (not used by anything)
  * Excludes entry points (CLI tools, main files, etc.)
+ * @param {Map} nodes - The dependency graph
+ * @param {RegExp[]} entryPointPatterns - Patterns that identify entry points
  */
-function findOrphans(nodes) {
+function findOrphans(nodes, entryPointPatterns = []) {
   const orphans = [];
 
-  // Patterns that indicate entry points (not orphans even if unused)
-  const entryPointPatterns = [
-    /\/cli\.[jt]sx?$/,
-    /\/main\.[jt]sx?$/,
-    /\/index\.[jt]sx?$/,
-    /\/server\.[jt]sx?$/,
-    /\/app\.[jt]sx?$/,
-    /\/page\.[jt]sx?$/,
-    /^\/bin\//,
-    /^\/app\//,
-    /^\/pages\//,
-    /\/route\.[jt]sx?$/,
-  ];
-
   for (const [filePath, data] of nodes) {
-    // No one uses this file
+    // No one uses this file via imports
     if (data.usedBy.length === 0) {
+      // Check if it has HTTP callers (calledBy) - if so, it's not an orphan
+      if (data.calledBy && data.calledBy.length > 0) continue;
+
       // Check if it's an entry point pattern
       const isEntryPoint = entryPointPatterns.some(p => p.test(filePath));
       if (isEntryPoint) continue;
@@ -300,24 +344,14 @@ function findEntryPoints(nodes) {
  * Algorithm:
  * 1. Find all entry points (files that are reachable from outside or are CLI/main files)
  * 2. Traverse the graph from entry points following 'uses' to find all reachable files
- * 3. Files not reachable from any entry point are isolated
- * 4. Group isolated files by their connected components
+ * 3. Also include files with 'calledBy' as reachable (HTTP API endpoints being used)
+ * 4. Files not reachable from any entry point are isolated
+ * 5. Group isolated files by their connected components
+ *
+ * @param {Map} nodes - The dependency graph
+ * @param {RegExp[]} entryPointPatterns - Patterns that identify entry points
  */
-function findClusters(nodes) {
-  // Patterns that indicate entry points
-  const entryPointPatterns = [
-    /\/cli\.[jt]sx?$/,
-    /\/main\.[jt]sx?$/,
-    /\/index\.[jt]sx?$/,
-    /\/server\.[jt]sx?$/,
-    /\/app\.[jt]sx?$/,
-    /\/page\.[jt]sx?$/,
-    /^\/bin\//,
-    /^\/app\//,
-    /^\/pages\//,
-    /\/route\.[jt]sx?$/,
-  ];
-
+function findClusters(nodes, entryPointPatterns = []) {
   // Step 1: Identify entry points
   const entryPoints = new Set();
   for (const [filePath, data] of nodes) {
@@ -331,6 +365,12 @@ function findClusters(nodes) {
   // Also include files with no usedBy that don't use internal deps (leaf entry points)
   for (const [filePath, data] of nodes) {
     if (data.usedBy.length === 0) {
+      // But if it has HTTP callers, it's reachable via API calls - treat as entry point
+      if (data.calledBy && data.calledBy.length > 0) {
+        entryPoints.add(filePath);
+        continue;
+      }
+
       const hasInternalDeps = data.uses.some(u =>
         u.startsWith('.') || u.startsWith('@/') || u.startsWith('~/')
       );
@@ -345,6 +385,23 @@ function findClusters(nodes) {
     // Try exact match first
     for (const [filePath] of nodes) {
       if (filePath === importPath) return filePath;
+    }
+
+    // Handle @/ and ~/ aliases (common Next.js/TypeScript aliases for project root)
+    if (importPath.startsWith('@/') || importPath.startsWith('~/')) {
+      const aliasPath = '/' + importPath.slice(2); // Remove @/ or ~/ prefix
+      for (const [filePath] of nodes) {
+        if (filePath === aliasPath ||
+            filePath === aliasPath + '.ts' ||
+            filePath === aliasPath + '.tsx' ||
+            filePath === aliasPath + '.js' ||
+            filePath === aliasPath + '.jsx' ||
+            filePath === aliasPath + '/index.ts' ||
+            filePath === aliasPath + '/index.tsx' ||
+            filePath === aliasPath + '/index.js') {
+          return filePath;
+        }
+      }
     }
 
     // Handle relative imports
@@ -470,6 +527,7 @@ function findClusters(nodes) {
 
 /**
  * Calculate transitive blast radius - all files affected by changing this file
+ * Includes both import dependencies (usedBy) and HTTP API dependencies (calledBy)
  */
 function calculateBlastRadius(nodes, targetPath) {
   // Normalize the target path
@@ -499,6 +557,7 @@ function calculateBlastRadius(nodes, targetPath) {
     purpose: nodes.get(actualPath)?.purpose || '',
     direct: [],
     transitive: [],
+    httpCallers: [],  // Files that call this via HTTP API
     total: 0
   };
 
@@ -509,6 +568,7 @@ function calculateBlastRadius(nodes, targetPath) {
     const node = nodes.get(filePath);
     if (!node) return;
 
+    // Follow import dependencies (usedBy)
     for (const dependent of node.usedBy) {
       if (!visited.has(dependent)) {
         if (depth === 0) {
@@ -519,27 +579,40 @@ function calculateBlastRadius(nodes, targetPath) {
         collectDependents(dependent, depth + 1);
       }
     }
+
+    // Follow HTTP API dependencies (calledBy) - only at depth 0
+    // (HTTP callers don't have transitive impact in the same way)
+    if (depth === 0 && node.calledBy) {
+      for (const caller of node.calledBy) {
+        if (!visited.has(caller) && !result.direct.includes(caller)) {
+          result.httpCallers.push(caller);
+        }
+      }
+    }
   }
 
   collectDependents(actualPath, 0);
 
-  result.total = result.direct.length + result.transitive.length;
+  result.total = result.direct.length + result.transitive.length + result.httpCallers.length;
   result.direct.sort();
   result.transitive.sort();
+  result.httpCallers.sort();
 
   return result;
 }
 
 /**
  * Generate full graph analysis
+ * @param {Map} nodes - The dependency graph
+ * @param {RegExp[]} entryPointPatterns - Patterns that identify entry points
  */
-function analyzeGraph(nodes) {
+function analyzeGraph(nodes, entryPointPatterns = []) {
   return {
     totalFiles: nodes.size,
     entryPoints: findEntryPoints(nodes),
-    orphans: findOrphans(nodes),
+    orphans: findOrphans(nodes, entryPointPatterns),
     cycles: findCycles(nodes),
-    clusters: findClusters(nodes)
+    clusters: findClusters(nodes, entryPointPatterns)
   };
 }
 
@@ -644,13 +717,25 @@ function formatBlastRadius(result, jsonOutput = false) {
 
   lines.push(`Direct dependents (${result.direct.length}):`);
   if (result.direct.length === 0) {
-    lines.push('  (none - this file is not used by anything)');
+    lines.push('  (none - this file is not used by anything via imports)');
   } else {
     for (const dep of result.direct) {
       lines.push(`  ${dep}`);
     }
   }
   lines.push('');
+
+  // Show HTTP callers if any
+  if (result.httpCallers && result.httpCallers.length > 0) {
+    lines.push(`HTTP API callers (${result.httpCallers.length}):`);
+    for (const caller of result.httpCallers.slice(0, 10)) {
+      lines.push(`  ${caller}`);
+    }
+    if (result.httpCallers.length > 10) {
+      lines.push(`  ... and ${result.httpCallers.length - 10} more`);
+    }
+    lines.push('');
+  }
 
   lines.push(`Transitive dependents (${result.transitive.length}):`);
   if (result.transitive.length === 0) {
@@ -778,6 +863,10 @@ function main() {
   const args = process.argv.slice(2);
   const rootPath = process.cwd();
 
+  // Load config for entry point patterns
+  const config = loadConfig(rootPath);
+  const entryPointPatterns = buildEntryPointPatterns(config);
+
   // Parse arguments
   const flags = {
     blastRadius: null,
@@ -835,6 +924,11 @@ Options:
   --output <file>             Export graph data to JSON file
   -j, --json                  Output results as JSON
   -h, --help                  Show this help message
+
+Entry Point Patterns:
+  Entry points are files that don't need to be imported (framework calls them directly).
+  Configure in .docmetarc.json with 'customEntryPointPatterns' array.
+  Default patterns include: app/**/route.ts, app/**/page.tsx, bin/**/*.js, etc.
 `);
     return;
   }
@@ -855,7 +949,7 @@ Options:
   }
 
   if (flags.orphans) {
-    const orphans = findOrphans(nodes);
+    const orphans = findOrphans(nodes, entryPointPatterns);
     console.log(formatOrphans(orphans, flags.json));
     return;
   }
@@ -873,13 +967,13 @@ Options:
   }
 
   if (flags.clusters) {
-    const clusters = findClusters(nodes);
+    const clusters = findClusters(nodes, entryPointPatterns);
     console.log(formatClusters(clusters, flags.json));
     return;
   }
 
   // Full analysis
-  const analysis = analyzeGraph(nodes);
+  const analysis = analyzeGraph(nodes, entryPointPatterns);
 
   // Output to file if requested
   if (flags.output) {

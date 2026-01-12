@@ -102,31 +102,108 @@ function extractJSExports(content) {
  */
 function extractJSImports(content) {
   const imports = new Set();
-  
+
   // import ... from 'path'
   const importMatches = content.matchAll(/from\s+['"]([^'"]+)['"]/g);
   for (const match of importMatches) {
     const importPath = match[1];
     // Only internal imports (relative, @/, ~/)
-    if (importPath.startsWith('.') || 
-        importPath.startsWith('@/') || 
+    if (importPath.startsWith('.') ||
+        importPath.startsWith('@/') ||
         importPath.startsWith('~/')) {
       imports.add(importPath);
     }
   }
-  
+
   // require('path')
   const requireMatches = content.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
   for (const match of requireMatches) {
     const importPath = match[1];
-    if (importPath.startsWith('.') || 
-        importPath.startsWith('@/') || 
+    if (importPath.startsWith('.') ||
+        importPath.startsWith('@/') ||
         importPath.startsWith('~/')) {
       imports.add(importPath);
     }
   }
-  
+
   return [...imports];
+}
+
+/**
+ * Extract HTTP API calls from JavaScript/TypeScript file
+ * Detects fetch(), axios, and other common HTTP client patterns
+ */
+function extractJSCalls(content) {
+  const calls = new Set();
+
+  // fetch('/api/...') or fetch("/api/...")
+  const fetchMatches = content.matchAll(/fetch\s*\(\s*['"`]([^'"`]+)['"`]/g);
+  for (const match of fetchMatches) {
+    const url = match[1];
+    // Only internal API calls (starting with / or relative)
+    if (url.startsWith('/api/') || url.startsWith('api/')) {
+      calls.add(url.startsWith('/') ? url : '/' + url);
+    }
+  }
+
+  // fetch(`/api/...`) with template literals (simple cases)
+  const templateFetchMatches = content.matchAll(/fetch\s*\(\s*`([^`]+)`/g);
+  for (const match of templateFetchMatches) {
+    const url = match[1];
+    // Extract the static part before any ${} interpolation
+    const staticPart = url.split('${')[0];
+    if (staticPart.startsWith('/api/') || staticPart.startsWith('api/')) {
+      // Normalize: add leading slash, remove trailing dynamic parts
+      let normalized = staticPart.startsWith('/') ? staticPart : '/' + staticPart;
+      // Remove trailing slash if it ends with one (before interpolation)
+      if (normalized.endsWith('/')) {
+        normalized = normalized.slice(0, -1);
+      }
+      if (normalized.length > 1) {
+        calls.add(normalized);
+      }
+    }
+  }
+
+  // axios.get/post/put/delete('/api/...')
+  const axiosMatches = content.matchAll(/axios\.(?:get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]+)['"`]/g);
+  for (const match of axiosMatches) {
+    const url = match[1];
+    if (url.startsWith('/api/') || url.startsWith('api/')) {
+      calls.add(url.startsWith('/') ? url : '/' + url);
+    }
+  }
+
+  // axios({ url: '/api/...' })
+  const axiosObjMatches = content.matchAll(/axios\s*\(\s*\{[^}]*url\s*:\s*['"`]([^'"`]+)['"`]/g);
+  for (const match of axiosObjMatches) {
+    const url = match[1];
+    if (url.startsWith('/api/') || url.startsWith('api/')) {
+      calls.add(url.startsWith('/') ? url : '/' + url);
+    }
+  }
+
+  // Next.js server actions or API route patterns
+  // useSWR('/api/...') or useSWR("/api/...")
+  const swrMatches = content.matchAll(/useSWR\s*\(\s*['"`]([^'"`]+)['"`]/g);
+  for (const match of swrMatches) {
+    const url = match[1];
+    if (url.startsWith('/api/') || url.startsWith('api/')) {
+      calls.add(url.startsWith('/') ? url : '/' + url);
+    }
+  }
+
+  // useQuery with queryFn that calls fetch (common pattern)
+  // This is harder to detect reliably, so we look for queryKey patterns
+  const queryKeyMatches = content.matchAll(/queryKey\s*:\s*\[['"`]([^'"`]+)['"`]\]/g);
+  for (const match of queryKeyMatches) {
+    const key = match[1];
+    if (key.startsWith('/api/') || key.startsWith('api/')) {
+      calls.add(key.startsWith('/') ? key : '/' + key);
+    }
+  }
+
+  return [...calls];
 }
 
 /**
@@ -345,13 +422,15 @@ function analyzeFile(filePath) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const ext = path.extname(filePath);
     const lines = content.split('\n').length;
-    
+
     let exports = [];
     let uses = [];
-    
+    let calls = [];
+
     if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
       exports = extractJSExports(content);
       uses = extractJSImports(content);
+      calls = extractJSCalls(content);
     } else if (['.py', '.pyw'].includes(ext)) {
       exports = extractPythonExports(content);
       uses = extractPythonImports(content);
@@ -363,10 +442,10 @@ function analyzeFile(filePath) {
       uses = extractRustImports(content);
     }
     // Other languages: leave empty, to be filled manually or by Claude
-    
-    return { exports, uses, lines };
+
+    return { exports, uses, calls, lines };
   } catch {
-    return { exports: [], uses: [], lines: 0 };
+    return { exports: [], uses: [], calls: [], lines: 0 };
   }
 }
 
@@ -383,16 +462,25 @@ function createDocMeta(dir, rootPath, config) {
     const filePath = path.join(dir, fileName);
     const analysis = analyzeFile(filePath);
 
-    files[fileName] = {
+    const fileEntry = {
       purpose: '[purpose]',
       exports: analysis.exports,
       uses: analysis.uses,
       usedBy: []  // Will be populated by 'usedby' command
     };
+
+    // Only add calls/calledBy if there are HTTP calls detected
+    // This keeps the schema minimal for files without API calls
+    if (analysis.calls && analysis.calls.length > 0) {
+      fileEntry.calls = analysis.calls;
+      fileEntry.calledBy = [];  // Will be populated by 'calls' command
+    }
+
+    files[fileName] = fileEntry;
   }
 
   let docMeta = {
-    v: 2,
+    v: 3,  // v3 adds calls/calledBy for HTTP API dependencies
     purpose: '[purpose]',
     files,
     history: [],

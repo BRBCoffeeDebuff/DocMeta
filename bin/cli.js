@@ -16,6 +16,7 @@ Usage:
   docmeta setup           Interactive setup wizard (recommended for new users)
   docmeta init [path]     Create .docmeta.json scaffolds for code directories
   docmeta usedby [path]   Populate usedBy fields by resolving uses references
+  docmeta calls [path]    Populate calls/calledBy fields from HTTP API calls
   docmeta graph           Analyze dependency graph (cycles, orphans, blast radius)
   docmeta update <target> Update file/folder metadata (--purpose, --history, --sync)
   docmeta crawl           Find files needing purposes, process in batches
@@ -33,7 +34,7 @@ Graph Analysis:
   docmeta graph --output <file>        Export graph to JSON
 
 Options:
-  --help, -h              Show this help message
+  help, --help, -h, ?     Show this help message
   --version, -v           Show version
 
 Examples:
@@ -57,9 +58,10 @@ MCP Integration:
 Workflow:
   1. docmeta setup         # Interactive setup (or use commands below)
   2. docmeta init          # Create scaffolds
-  3. docmeta usedby        # Build dependency graph
-  4. docmeta graph         # Analyze for issues
-  5. docmeta crawl         # Fill in purposes (batched)
+  3. docmeta usedby        # Build import dependency graph
+  4. docmeta calls         # Build HTTP API dependency graph
+  5. docmeta graph         # Analyze for issues
+  6. docmeta crawl         # Fill in purposes (batched)
 
 Learn more: https://github.com/anthropic-community/docmeta
 `;
@@ -84,6 +86,11 @@ function main() {
     case 'usedby':
       process.argv = ['node', 'usedby.js', args[1] || '.'];
       require('./usedby.js');
+      break;
+
+    case 'calls':
+      process.argv = ['node', 'calls.js', args[1] || '.'];
+      require('./calls.js');
       break;
 
     case 'graph':
@@ -127,6 +134,10 @@ function main() {
 
     case '--help':
     case '-h':
+    case '--h':
+    case '-help':
+    case 'help':
+    case '?':
     case undefined:
       console.log(HELP);
       break;

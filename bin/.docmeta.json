@@ -3,12 +3,13 @@
   "purpose": "CLI entry points for docmeta commands. Routes user commands to appropriate handlers for initializing, resolving, validating, and cross-repo registry management.",
   "files": {
     "cli.js": {
-      "purpose": "Main CLI entry point. Parses arguments and routes to init, usedby, update, ignore, registry, check, setup, or mcp commands. Displays help and version info.",
+      "purpose": "Main CLI entry point. Parses arguments and routes to init, usedby, calls, update, ignore, registry, check, setup, graph, or mcp commands. Displays help and version info.",
       "exports": [],
       "uses": [
         "./setup.js",
         "./init.js",
         "./usedby.js",
+        "./calls.js",
         "./graph.js",
         "./update.js",
         "./ignore.js",
@@ -127,16 +128,59 @@
       ]
     },
     "graph.js": {
-      "purpose": "Dependency graph analysis CLI. Detects cycles (circular dependencies), orphans (dead code candidates), entry points, and calculates transitive blast radius for impact analysis.",
+      "purpose": "Dependency graph analysis CLI. Detects cycles (circular dependencies), orphans (dead code candidates), clusters (isolated dead code), entry points, and calculates transitive blast radius including HTTP API callers.",
       "exports": [],
-      "uses": [],
+      "uses": [
+        "./lib/config"
+      ],
       "usedBy": [
         "/bin/cli.js",
         "/bin/setup.js"
       ]
+    },
+    "calls.js": {
+      "purpose": "Resolves HTTP API call dependencies. Scans for fetch/axios calls to /api/* endpoints, maps them to route files, and populates both calls (forward) and calledBy (reverse) arrays for bidirectional HTTP dependency tracking.",
+      "exports": [],
+      "uses": [
+        "./lib/config"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
     }
   },
   "history": [
+    [
+      "2026-01-12T06:15:00.000Z",
+      "Added calls/calledBy for HTTP API dependencies: init.js extracts fetch/axios calls, calls.js resolves them to route files, graph.js considers calledBy in reachability analysis",
+      [
+        "init.js",
+        "calls.js",
+        "graph.js",
+        "cli.js"
+      ]
+    ],
+    [
+      "2026-01-12T04:56:14.212Z",
+      "Added more help command aliases (help, ?, -help, --h) for improved CLI usability",
+      [
+        "cli.js"
+      ]
+    ],
+    [
+      "2026-01-12T04:56:13.948Z",
+      "Added --add-entry flag for managing entry point patterns in .docmetaignore",
+      [
+        "ignore.js"
+      ]
+    ],
+    [
+      "2026-01-12T04:56:13.678Z",
+      "Added globToRegex() and buildEntryPointPatterns() functions, updated findOrphans() and findClusters() to use configurable entry point patterns",
+      [
+        "graph.js"
+      ]
+    ],
     [
       "2026-01-12T04:23:16.607Z",
       "Sync: refreshed 2 file(s)",
@@ -193,28 +237,7 @@
         "setup.js",
         "update.js"
       ]
-    ],
-    [
-      "2026-01-11T23:13:01.667Z",
-      "Test human mode",
-      [
-        "update.js"
-      ]
-    ],
-    [
-      "2026-01-11T23:12:57.697Z",
-      "Added JSON default output, exit codes, and structured error types",
-      [
-        "update.js"
-      ]
-    ],
-    [
-      "2026-01-11T23:10:24.294Z",
-      "Changed placeholder from _TODO_ to [purpose]",
-      [
-        "crawl.js"
-      ]
     ]
   ],
-  "updated": "2026-01-12T04:23:20.854Z"
+  "updated": "2026-01-12T04:56:20.688Z"
 }
