@@ -1,0 +1,322 @@
+#!/usr/bin/env node
+/**
+ * docmeta init - Create .docmeta.json scaffolds for code directories
+ * 
+ * Usage: docmeta init [path]
+ * 
+ * Scans for directories containing code files and creates initial
+ * .docmeta.json files with structure to be filled in.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { loadConfig, addHistoryEntry } = require('./lib/config');
+
+// Configuration - now loaded from shared config
+const CONFIG = {
+  ignoreDirs: [
+    'node_modules', '.git', '.next', 'dist', 'build', '.vercel',
+    '__pycache__', '.pytest_cache', 'venv', '.venv', 'target',
+    'coverage', '.nyc_output', '.cache'
+  ],
+  codeExtensions: [
+    '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',  // JavaScript/TypeScript
+    '.py', '.pyw',                                   // Python
+    '.go',                                           // Go
+    '.rs',                                           // Rust
+    '.java', '.kt', '.scala',                        // JVM
+    '.rb',                                           // Ruby
+    '.php',                                          // PHP
+    '.cs',                                           // C#
+    '.swift',                                        // Swift
+  ],
+  ignoreFiles: [
+    '.DS_Store', 'thumbs.db',
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
+    'poetry.lock', 'Cargo.lock', 'go.sum'
+  ],
+  ignorePatterns: [
+    /\.test\.[jt]sx?$/,
+    /\.spec\.[jt]sx?$/,
+    /_test\.go$/,
+    /_test\.py$/,
+    /test_.*\.py$/,
+  ]
+};
+
+/**
+ * Check if a file should be documented
+ */
+function shouldDocumentFile(filename) {
+  if (CONFIG.ignoreFiles.includes(filename)) return false;
+  if (CONFIG.ignorePatterns.some(p => p.test(filename))) return false;
+  const ext = path.extname(filename);
+  return CONFIG.codeExtensions.includes(ext);
+}
+
+/**
+ * Get code files in a directory
+ */
+function getCodeFiles(dir) {
+  try {
+    return fs.readdirSync(dir).filter(f => {
+      const stat = fs.statSync(path.join(dir, f));
+      return stat.isFile() && shouldDocumentFile(f);
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Extract exports from JavaScript/TypeScript file
+ */
+function extractJSExports(content) {
+  const exports = new Set();
+  
+  // Named exports: export const/function/class/type/interface Name
+  const namedExports = content.matchAll(
+    /export\s+(?:const|let|var|function|class|type|interface|enum)\s+(\w+)/g
+  );
+  for (const match of namedExports) {
+    exports.add(match[1]);
+  }
+  
+  // Named exports: export { Name, Other }
+  const bracketExports = content.matchAll(/export\s*\{([^}]+)\}/g);
+  for (const match of bracketExports) {
+    const names = match[1].split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim());
+    names.forEach(n => n && exports.add(n));
+  }
+  
+  // Default export
+  if (/export\s+default\s/.test(content)) {
+    exports.add('default');
+  }
+  
+  return [...exports];
+}
+
+/**
+ * Extract internal imports from JavaScript/TypeScript file
+ */
+function extractJSImports(content) {
+  const imports = new Set();
+  
+  // import ... from 'path'
+  const importMatches = content.matchAll(/from\s+['"]([^'"]+)['"]/g);
+  for (const match of importMatches) {
+    const importPath = match[1];
+    // Only internal imports (relative, @/, ~/)
+    if (importPath.startsWith('.') || 
+        importPath.startsWith('@/') || 
+        importPath.startsWith('~/')) {
+      imports.add(importPath);
+    }
+  }
+  
+  // require('path')
+  const requireMatches = content.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+  for (const match of requireMatches) {
+    const importPath = match[1];
+    if (importPath.startsWith('.') || 
+        importPath.startsWith('@/') || 
+        importPath.startsWith('~/')) {
+      imports.add(importPath);
+    }
+  }
+  
+  return [...imports];
+}
+
+/**
+ * Extract exports from Python file
+ */
+function extractPythonExports(content) {
+  const exports = new Set();
+  
+  // __all__ = ['name1', 'name2']
+  const allMatch = content.match(/__all__\s*=\s*\[([^\]]+)\]/);
+  if (allMatch) {
+    const names = allMatch[1].match(/['"](\w+)['"]/g);
+    if (names) {
+      names.forEach(n => exports.add(n.replace(/['"]/g, '')));
+    }
+    return [...exports];
+  }
+  
+  // def function_name / class ClassName (public = no underscore prefix)
+  const defs = content.matchAll(/^(?:def|class)\s+([a-zA-Z]\w*)/gm);
+  for (const match of defs) {
+    exports.add(match[1]);
+  }
+  
+  return [...exports];
+}
+
+/**
+ * Extract imports from Python file
+ */
+function extractPythonImports(content) {
+  const imports = new Set();
+  
+  // from .module import ... (relative imports)
+  const relativeImports = content.matchAll(/from\s+(\.+\w*)/g);
+  for (const match of relativeImports) {
+    imports.add(match[1]);
+  }
+  
+  return [...imports];
+}
+
+/**
+ * Analyze a file and extract metadata
+ */
+function analyzeFile(filePath) {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const ext = path.extname(filePath);
+    const lines = content.split('\n').length;
+    
+    let exports = [];
+    let uses = [];
+    
+    if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
+      exports = extractJSExports(content);
+      uses = extractJSImports(content);
+    } else if (['.py', '.pyw'].includes(ext)) {
+      exports = extractPythonExports(content);
+      uses = extractPythonImports(content);
+    }
+    // Other languages: leave empty, to be filled manually or by Claude
+    
+    return { exports, uses, lines };
+  } catch {
+    return { exports: [], uses: [], lines: 0 };
+  }
+}
+
+/**
+ * Create a .docmeta.json structure for a directory
+ */
+function createDocMeta(dir, rootPath, config) {
+  const relativePath = path.relative(rootPath, dir);
+  const docPath = '/' + relativePath.replace(/\\/g, '/');
+  const codeFiles = getCodeFiles(dir);
+
+  const files = {};
+  for (const fileName of codeFiles) {
+    const filePath = path.join(dir, fileName);
+    const analysis = analyzeFile(filePath);
+
+    files[fileName] = {
+      purpose: '[purpose]',
+      exports: analysis.exports,
+      uses: analysis.uses,
+      usedBy: []  // Will be populated by 'usedby' command
+    };
+  }
+
+  let docMeta = {
+    v: 2,
+    purpose: '[purpose]',
+    files,
+    history: [],
+    updated: new Date().toISOString()
+  };
+
+  // Add initial history entry (respects maxHistoryEntries from config)
+  docMeta = addHistoryEntry(docMeta, 'Initial documentation scaffold', codeFiles, config);
+
+  return docMeta;
+}
+
+/**
+ * Recursively find directories to document
+ */
+function findDirectories(rootPath) {
+  const results = [];
+  
+  function walk(dir) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (CONFIG.ignoreDirs.includes(entry.name)) continue;
+        if (entry.name.startsWith('.')) continue;
+        
+        const fullPath = path.join(dir, entry.name);
+        const codeFiles = getCodeFiles(fullPath);
+        
+        if (codeFiles.length > 0) {
+          results.push(fullPath);
+        }
+        
+        walk(fullPath);
+      }
+    } catch (err) {
+      // Skip unreadable directories
+    }
+  }
+  
+  // Check root directory too
+  if (getCodeFiles(rootPath).length > 0) {
+    results.push(rootPath);
+  }
+  
+  walk(rootPath);
+  return results;
+}
+
+/**
+ * Main function
+ */
+function main() {
+  const targetPath = path.resolve(process.argv[2] || '.');
+
+  // Load configuration
+  const config = loadConfig(targetPath);
+
+  console.log('\n📚 DocMeta Init\n');
+  console.log(`Scanning: ${targetPath}\n`);
+
+  const directories = findDirectories(targetPath);
+  console.log(`Found ${directories.length} directories with code files\n`);
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const dir of directories) {
+    const metaPath = path.join(dir, '.docmeta.json');
+    const relativePath = path.relative(targetPath, dir) || '.';
+
+    // Skip if already exists
+    if (fs.existsSync(metaPath)) {
+      console.log(`⏭️  ${relativePath}/`);
+      skipped++;
+      continue;
+    }
+
+    // Create docmeta
+    const docMeta = createDocMeta(dir, targetPath, config);
+    const fileCount = Object.keys(docMeta.files).length;
+
+    fs.writeFileSync(metaPath, JSON.stringify(docMeta, null, 2) + '\n');
+    console.log(`✅ ${relativePath}/ (${fileCount} files)`);
+    created++;
+  }
+
+  console.log(`\n📊 Summary: ${created} created, ${skipped} skipped\n`);
+
+  if (created > 0) {
+    console.log('💡 Next steps:');
+    console.log('   1. Run: docmeta usedby');
+    console.log('      (Resolves dependency graph, populates usedBy fields)');
+    console.log('   2. Fill in [purpose] purposes in .docmeta.json files');
+    console.log('   3. Copy docs/DOCMETA.md to your project for Claude Code');
+    console.log('');
+  }
+}
+
+main();

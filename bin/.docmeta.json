@@ -1,0 +1,208 @@
+{
+  "v": 3,
+  "purpose": "CLI entry points for docmeta commands. Routes user commands to appropriate handlers for initializing, resolving, validating, and cross-repo registry management.",
+  "files": {
+    "cli.js": {
+      "purpose": "Main CLI entry point. Parses arguments and routes to init, usedby, update, ignore, registry, check, setup, or mcp commands. Displays help and version info.",
+      "exports": [],
+      "uses": [
+        "./setup.js",
+        "./init.js",
+        "./usedby.js",
+        "./update.js",
+        "./ignore.js",
+        "./check.js",
+        "./crawl.js",
+        "./mcp-server.js",
+        "./registry.js"
+      ],
+      "usedBy": []
+    },
+    "registry.js": {
+      "purpose": "CLI for cross-repo reference management. Add/remove/sync repositories, export/import docmeta bundles, show cached repo metadata.",
+      "exports": [],
+      "uses": [
+        "./lib/registry"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    },
+    "init.js": {
+      "purpose": "Creates .docmeta.json scaffolds for code directories. Scans for code files, extracts exports/imports for JS/TS/Python, creates initial metadata with _TODO_ placeholders.",
+      "exports": [
+        "Name",
+        "Other"
+      ],
+      "uses": [
+        "./lib/config"
+      ],
+      "usedBy": [
+        "/bin/cli.js",
+        "/bin/setup.js"
+      ]
+    },
+    "usedby.js": {
+      "purpose": "Resolves the bidirectional dependency graph. Reads all uses arrays, resolves import paths, and populates usedBy arrays in target files.",
+      "exports": [],
+      "uses": [],
+      "usedBy": [
+        "/bin/cli.js",
+        "/bin/setup.js"
+      ]
+    },
+    "check.js": {
+      "purpose": "Validates documentation health. Finds missing purposes, undocumented files, stale entries, and missing usedBy on shared code. Returns exit code 1 if issues found.",
+      "exports": [],
+      "uses": [],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    },
+    "mcp-server.js": {
+      "purpose": "MCP server exposing DocMeta as tools for Claude Code. Provides docmeta_lookup, docmeta_blast_radius (with cross-repo support), docmeta_contracts, and docmeta_search tools over JSON-RPC stdio.",
+      "exports": [],
+      "uses": [
+        "./lib/registry"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    },
+    "setup.js": {
+      "purpose": "Interactive setup wizard. Guides users through MCP configuration (global/local) and project initialization with default and advanced modes.",
+      "exports": [],
+      "uses": [
+        "./lib/config",
+        "./lib/subagent",
+        "./lib/ignores",
+        "./init.js",
+        "./usedby.js"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    },
+    "ignore.js": {
+      "purpose": "CLI command to manage ignore patterns. Allows adding/removing custom directories, files, and regex patterns to .docmetarc.json.",
+      "exports": [],
+      "uses": [
+        "./lib/config",
+        "./lib/ignores"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    },
+    "postinstall.js": {
+      "purpose": "Runs after npm install. Prints friendly message prompting users to run docmeta setup. Suppresses output in CI environments.",
+      "exports": [],
+      "uses": [],
+      "usedBy": []
+    },
+    "update.js": {
+      "purpose": "CLI command to update .docmeta.json files. Supports --purpose, --history, and --sync operations. Maintains history with configurable max entries.",
+      "exports": [
+        "Name",
+        "Other"
+      ],
+      "uses": [
+        "./lib/config"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    },
+    "crawl.js": {
+      "purpose": "Crawl codebase to find files with missing purposes, processing in batches for agent checkpoints",
+      "exports": [],
+      "uses": [
+        "./lib/config",
+        "./lib/ignores"
+      ],
+      "usedBy": [
+        "/bin/cli.js"
+      ]
+    }
+  },
+  "history": [
+    [
+      "2026-01-12T03:47:04.359Z",
+      "Replaced static MCP_CONFIG with getMcpConfig() function that detects local mcp-server.js and uses absolute path with node command, falls back to npx for published package",
+      [
+        "setup.js"
+      ]
+    ],
+    [
+      "2026-01-12T03:43:10.547Z",
+      "Added CLAUDE.md installation functionality with installClaudeMd() function, CLAUDE_MD_PATH constant, and integration into setup flows",
+      [
+        "setup.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:26:47.598Z",
+      "Sync: refreshed 8 file(s)",
+      [
+        "cli.js",
+        "crawl.js",
+        "ignore.js",
+        "init.js",
+        "mcp-server.js",
+        "registry.js",
+        "setup.js",
+        "update.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:13:01.667Z",
+      "Test human mode",
+      [
+        "update.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:12:57.697Z",
+      "Added JSON default output, exit codes, and structured error types",
+      [
+        "update.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:10:24.294Z",
+      "Changed placeholder from _TODO_ to [purpose]",
+      [
+        "crawl.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:10:24.197Z",
+      "Changed placeholder from _TODO_ to [purpose]",
+      [
+        "check.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:10:24.100Z",
+      "Changed placeholder from _TODO_ to [purpose]",
+      [
+        "update.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:10:19.019Z",
+      "Changed placeholder from _TODO_ to [purpose]",
+      [
+        "init.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:05:05.634Z",
+      "Added crawl command to CLI",
+      [
+        "cli.js"
+      ]
+    ]
+  ],
+  "updated": "2026-01-12T03:47:09.219Z"
+}

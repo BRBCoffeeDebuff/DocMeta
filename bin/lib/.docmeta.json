@@ -1,0 +1,126 @@
+{
+  "v": 3,
+  "purpose": "Shared utilities and configuration for DocMeta CLI tools, including cross-repo registry management.",
+  "files": {
+    "registry.js": {
+      "purpose": "Cross-repo reference registry. Parses reference URIs, manages ~/.docmeta registry and cache, exports/imports docmeta bundles, resolves cross-repo consumers.",
+      "exports": [],
+      "uses": [],
+      "usedBy": [
+        "/bin/mcp-server.js",
+        "/bin/registry.js"
+      ]
+    },
+    "config.js": {
+      "purpose": "Shared configuration and utilities. Manages history trimming (with ISO 8601 timestamps), .docmeta.json read/write, and project config (.docmetarc.json). Supports DOCMETA_CONFIG env var override.",
+      "exports": [],
+      "uses": [],
+      "usedBy": [
+        "/bin/crawl.js",
+        "/bin/ignore.js",
+        "/bin/init.js",
+        "/bin/setup.js",
+        "/bin/update.js"
+      ]
+    },
+    "ignores.js": {
+      "purpose": "Smart ignore patterns combining .gitignore with defaults for dependencies, build output, and secrets.",
+      "exports": [],
+      "uses": [],
+      "usedBy": [
+        "/bin/crawl.js",
+        "/bin/ignore.js",
+        "/bin/lib/subagent.js",
+        "/bin/setup.js"
+      ]
+    },
+    "subagent.js": {
+      "purpose": "DocMeta subagent generator. Creates CLAUDE.md, agent config, and agent instructions with proper scope and ignore patterns.",
+      "exports": [],
+      "uses": [
+        "./ignores"
+      ],
+      "usedBy": [
+        "/bin/setup.js"
+      ]
+    }
+  },
+  "history": [
+    [
+      "2026-01-11T23:26:47.599Z",
+      "Sync: refreshed 4 file(s)",
+      [
+        "config.js",
+        "ignores.js",
+        "registry.js",
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:15:05.422Z",
+      "Added JSON output documentation to generated agent",
+      [
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:10:24.387Z",
+      "Changed placeholder from _TODO_ to [purpose]",
+      [
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T23:09:13.775Z",
+      "Changed placeholder from _TODO_ to [purpose] to avoid confusion with coding TODOs",
+      [
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T22:58:19.841Z",
+      "Changed from .json to .md agent format; added generateAgentMarkdown function",
+      [
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T22:41:14.302Z",
+      "Updated CLAUDE.md template to use CLI commands instead of Task tool",
+      [
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T22:40:35.858Z",
+      "Fixed CLAUDE.md instructions to use CLI commands instead of non-existent Task tool subagent",
+      [
+        "subagent.js"
+      ]
+    ],
+    [
+      "2026-01-11T22:45:00.000Z",
+      "Added ISO 8601 timestamps to history entries and DOCMETA_CONFIG env var support",
+      [
+        "config.js"
+      ]
+    ],
+    [
+      "2026-01-11T22:35:00.000Z",
+      "Added cross-repo registry library with DOCMETA_HOME/REGISTRY/CACHE env vars",
+      [
+        "registry.js"
+      ]
+    ],
+    [
+      "2026-01-11",
+      "Added exports and usedBy references for all lib modules",
+      [
+        "config.js",
+        "ignores.js",
+        "subagent.js"
+      ]
+    ]
+  ],
+  "updated": "2026-01-12T03:47:09.220Z"
+}

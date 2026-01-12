@@ -1,0 +1,45 @@
+{
+  "name": "@brbcoffeedebuff/docmeta",
+  "version": "1.0.0",
+  "description": "Living documentation for AI-assisted coding. Helps Claude Code understand your codebase faster.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "documentation",
+    "ai-coding",
+    "developer-tools",
+    "dx",
+    "mcp"
+  ],
+  "license": "Apache-2.0",
+  "author": "Anthropic Community",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anthropic-community/docmeta.git"
+  },
+  "homepage": "https://github.com/anthropic-community/docmeta#readme",
+  "bugs": {
+    "url": "https://github.com/anthropic-community/docmeta/issues"
+  },
+  "bin": {
+    "docmeta": "bin/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "files": [
+    "bin",
+    "docs",
+    "SCHEMA.md",
+    "CRUD.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}

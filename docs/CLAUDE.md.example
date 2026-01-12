@@ -1,0 +1,35 @@
+# Example CLAUDE.md Addition
+
+Add this section to your project's `CLAUDE.md` file to enable DocMeta integration:
+
+---
+
+## Documentation
+
+This project uses [DocMeta](https://github.com/anthropic-community/docmeta) for living documentation.
+
+### Before working on code
+
+Check if the target folder has a `.docmeta.json` file. If it does, read it first to understand:
+- What the folder/files do (`purpose`)
+- What will break if you change them (`usedBy`) 
+- Recent context (`history`)
+
+### After modifying code
+
+Update `.docmeta.json` in any folder you changed:
+- Update `exports` if you changed the public interface
+- Update `uses` if you added/removed imports
+- Update `usedBy` in files you now import from (bidirectional)
+- Add a `history` entry describing what you changed
+- Update the `updated` timestamp
+
+See `/docs/DOCMETA.md` for complete instructions.
+
+---
+
+## Quick Setup
+
+1. Copy `docs/DOCMETA.md` from the docmeta package to your project
+2. Add the above section to your `CLAUDE.md`
+3. Claude Code will now read and maintain documentation automatically
