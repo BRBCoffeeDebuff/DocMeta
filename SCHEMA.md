@@ -2,6 +2,8 @@
 
 Version: 3
 
+> **DocMeta is designed for AI coding agents like Claude Code.** The schema captures exactly what AI needs to understand and safely modify your codebase.
+
 ## Philosophy
 
 Store only what saves the agent from reading code. Every field must answer: **"Does this prevent a file read or prevent a mistake?"**
@@ -29,7 +31,9 @@ One `.docmeta.json` per documented folder, co-located with the code it describes
       "purpose": "1-3 sentences describing what this file does.",
       "exports": ["namedExport", "AnotherExport", "default"],
       "uses": ["@/lib/internal-dep", "@/components/Thing"],
-      "usedBy": ["/app/other/page.tsx", "/lib/consumer.ts"]
+      "usedBy": ["/app/other/page.tsx", "/lib/consumer.ts"],
+      "calls": ["/app/api/users/route.ts"],
+      "calledBy": []
     }
   },
   "contracts": {
@@ -144,6 +148,30 @@ One `.docmeta.json` per documented folder, co-located with the code it describes
 
 **This is the blast radius.** Before changing a file, Claude checks `usedBy` to understand the impact.
 
+### `files.*.calls` (optional)
+- **Type:** `string[]`
+- **Purpose:** API routes this file calls via HTTP (fetch, axios, etc.)
+- **Format:** Absolute paths to route files
+- **Answers:** "What API routes does this file depend on?"
+
+```json
+"calls": ["/app/api/users/route.ts", "/app/api/auth/login/route.ts"]
+```
+
+Populated by `docmeta calls`. Tracks HTTP dependencies in frameworks like Next.js where components call API routes via fetch/axios.
+
+### `files.*.calledBy` (optional)
+- **Type:** `string[]`
+- **Purpose:** Files that call this route via HTTP
+- **Format:** Absolute paths from project root
+- **Answers:** "What files make HTTP calls to this API route?"
+
+```json
+"calledBy": ["/app/dashboard/page.tsx", "/src/components/UserList.tsx"]
+```
+
+Populated by `docmeta calls`. The HTTP equivalent of `usedBy` - shows which files would be affected if this API route changes.
+
 ### `contracts` (optional)
 - **Type:** `object`
 - **Purpose:** Public interfaces that external systems consume
@@ -251,7 +279,9 @@ Without contracts, the agent has no way to know "this REST endpoint is called by
 
 ## Bidirectional Dependency Tracking
 
-`uses` and `usedBy` are two sides of the same relationship:
+DocMeta tracks two types of dependencies, each with bidirectional links:
+
+### Import Dependencies: `uses` / `usedBy`
 
 ```
 /lib/validation/index.ts
@@ -267,9 +297,23 @@ When you add an import:
 1. Add to `uses` in the importing file
 2. Add to `usedBy` in the imported file
 
-When you remove an import:
-1. Remove from `uses` in the importing file
-2. Remove from `usedBy` in the formerly-imported file
+### HTTP Dependencies: `calls` / `calledBy`
+
+For frameworks like Next.js where components call API routes via fetch/axios:
+
+```
+/app/api/users/route.ts
+  calledBy: ["/app/dashboard/page.tsx", "/src/components/UserList.tsx"]
+
+/app/dashboard/page.tsx
+  calls: ["/app/api/users/route.ts", "/app/api/stats/route.ts"]
+```
+
+Run `docmeta calls` to populate these fields automatically by scanning for:
+- `fetch('/api/...')` calls
+- `axios.get('/api/...')` and similar
+- `useSWR('/api/...')` hooks
+- Other HTTP client patterns
 
 This bidirectional tracking is the main maintenance burden, but it's also the main value.
 
@@ -411,7 +455,9 @@ There's no perfect solution. The goal is to make the unknown *visible* so agents
       "purpose": "JWT token generation and validation.",
       "exports": ["generateToken", "validateToken"],
       "uses": ["@/lib/config"],
-      "usedBy": ["/app/api/login/route.ts"]
+      "usedBy": ["/app/api/login/route.ts"],
+      "calls": [],
+      "calledBy": []
     }
   },
   "history": [],

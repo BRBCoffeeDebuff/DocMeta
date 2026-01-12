@@ -6,13 +6,13 @@ Add this section to your project's `CLAUDE.md` file to enable DocMeta integratio
 
 ## Documentation
 
-This project uses [DocMeta](https://github.com/anthropic-community/docmeta) for living documentation.
+This project uses [DocMeta](https://github.com/anthropic-community/docmeta) for AI-assisted code understanding. DocMeta provides structured metadata that helps AI coding agents like Claude Code understand your codebase faster than reading raw source files.
 
 ### Before working on code
 
 Check if the target folder has a `.docmeta.json` file. If it does, read it first to understand:
 - What the folder/files do (`purpose`)
-- What will break if you change them (`usedBy`) 
+- What will break if you change them (`usedBy` for imports, `calledBy` for HTTP calls)
 - Recent context (`history`)
 
 ### After modifying code
@@ -20,7 +20,8 @@ Check if the target folder has a `.docmeta.json` file. If it does, read it first
 Update `.docmeta.json` in any folder you changed:
 - Update `exports` if you changed the public interface
 - Update `uses` if you added/removed imports
-- Update `usedBy` in files you now import from (bidirectional)
+- Run `docmeta usedby` to rebuild import dependencies
+- Run `docmeta calls` to rebuild HTTP API dependencies (for Next.js/API routes)
 - Add a `history` entry describing what you changed
 - Update the `updated` timestamp
 

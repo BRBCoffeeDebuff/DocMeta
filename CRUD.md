@@ -1,5 +1,7 @@
 # DocMeta CRUD Lifecycle
 
+> **DocMeta is designed for AI coding agents like Claude Code.** This guide shows how to maintain documentation that helps AI understand and safely modify your codebase.
+
 How to maintain documentation at each stage of code changes.
 
 ## CREATE — New File
@@ -11,9 +13,10 @@ When you create a new code file:
 1. Add entry to `.docmeta.json` in the same directory
 2. Fill in: `purpose`, `exports`, `uses`
 3. Set `usedBy` to empty array (will be populated by consumers)
-4. Update `usedBy` in every file you import from
-5. Add history entry
-6. Update timestamp
+4. Run `docmeta usedby` to rebuild import dependencies
+5. Run `docmeta calls` if the file makes HTTP API calls (fetch, axios, etc.)
+6. Add history entry
+7. Update timestamp
 
 ### Example
 
@@ -108,7 +111,7 @@ Has .docmeta.json?
     └─ Consider creating .docmeta.json after completing work
 ```
 
-### What usedBy Tells You
+### What usedBy and calledBy Tell You
 
 Before editing `/lib/validation/index.ts`:
 
@@ -122,11 +125,23 @@ Before editing `/lib/validation/index.ts`:
 
 This means: **3 files import this code. Changes here could break them.**
 
+Before editing `/app/api/users/route.ts`:
+
+```json
+"calledBy": [
+  "/app/dashboard/page.tsx",
+  "/src/components/UserList.tsx"
+]
+```
+
+This means: **2 files call this API route via HTTP. Changes here could break them.**
+
 Check these files if you:
 - Change function signatures
 - Rename exports
 - Change return types
 - Remove functionality
+- Change API response format (for routes)
 
 ---
 
@@ -327,20 +342,24 @@ If you notice docs don't match code:
 
 | Action | Update these |
 |--------|--------------|
-| Create file | `files[new].*`, target `usedBy`, `history`, `updated` |
+| Create file | `files[new].*`, run `docmeta usedby`, run `docmeta calls`, `history`, `updated` |
 | Modify internals | `history`, `updated` |
 | Change exports | `files[x].exports`, `history`, `updated` |
-| Add import | `files[x].uses`, target `usedBy`, `history`, `updated` |
-| Remove import | `files[x].uses`, target `usedBy`, `history`, `updated` |
-| Delete file | Remove `files[x]`, all target `usedBy`, `history`, `updated` |
+| Add import | run `docmeta usedby`, `history`, `updated` |
+| Remove import | run `docmeta usedby`, `history`, `updated` |
+| Add HTTP call | run `docmeta calls`, `history`, `updated` |
+| Delete file | Remove `files[x]`, run `docmeta usedby`, run `docmeta calls`, `history`, `updated` |
 | Rename/move | Treat as delete + create |
 
 ---
 
 ## The Golden Rule
 
-**`usedBy` is the most important field.**
+**`usedBy` and `calledBy` are the most important fields.**
 
-It answers "what breaks if I change this?" — which is the question that prevents mistakes.
+They answer "what breaks if I change this?" — which is the question that prevents AI agents from making breaking changes.
 
-Keeping `usedBy` accurate across files is the main maintenance burden, but it's also the main value. An accurate dependency graph is worth more than perfect prose descriptions.
+- `usedBy` tracks import dependencies (what files import this)
+- `calledBy` tracks HTTP dependencies (what files call this API route)
+
+Keeping these fields accurate is the main maintenance burden, but it's also the main value. An accurate dependency graph is worth more than perfect prose descriptions.

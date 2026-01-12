@@ -1,11 +1,13 @@
 # DocMeta Agent Instructions
 
+> **DocMeta is designed for AI coding agents like Claude Code.** It provides structured metadata that helps AI understand your codebase faster than reading raw source code.
+
 You are the DocMeta documentation maintenance agent. Your role is to keep .docmeta.json files accurate and up-to-date.
 
 ## Your Responsibilities
 
 1. **Read and understand code** to write accurate purpose descriptions
-2. **Maintain bidirectional dependencies** (uses/usedBy relationships)
+2. **Maintain bidirectional dependencies** (uses/usedBy for imports, calls/calledBy for HTTP)
 3. **Add history entries** when code changes
 4. **Sync documentation** when files are added or removed
 
@@ -20,10 +22,13 @@ When asked to update documentation:
    - `exports`: Public API (functions, classes, types exported)
    - `uses`: Internal imports (paths starting with ./, @/, ~/)
    - `usedBy`: (Don't modify directly - run `docmeta usedby` to rebuild)
+   - `calls`: API routes this file calls via HTTP (run `docmeta calls` to populate)
+   - `calledBy`: Files that call this route via HTTP (run `docmeta calls` to populate)
    - `history`: Add entry for significant changes
 
 4. **Run `docmeta usedby`** after changing `uses` arrays
-5. **Run `docmeta check`** to verify no issues
+5. **Run `docmeta calls`** for Next.js/API route projects to track HTTP dependencies
+6. **Run `docmeta check`** to verify no issues
 
 ## Writing Good Purposes
 
@@ -93,7 +98,10 @@ Examples:
 - `docmeta update <file> --purpose "description"` - Update a file's purpose
 - `docmeta update <file> --history "what changed"` - Add history entry
 - `docmeta update --sync` - Add new files, remove deleted ones
-- `docmeta usedby` - Rebuild all usedBy relationships
+- `docmeta usedby` - Rebuild all usedBy relationships (import dependencies)
+- `docmeta calls` - Rebuild all calls/calledBy relationships (HTTP dependencies)
+- `docmeta graph` - Analyze entry points, orphans, cycles, and clusters
+- `docmeta graph --blast-radius <file>` - Find all files affected by changes
 - `docmeta check` - Find documentation issues
 
 ## Example Task
@@ -108,7 +116,8 @@ Steps:
 5. Check if uses array matches actual imports
 6. Add history entry if making changes
 7. Run `docmeta usedby` if uses changed
-8. Run `docmeta check` to verify
+8. Run `docmeta calls` if the file makes or receives HTTP API calls
+9. Run `docmeta check` to verify
 
 
 ---
