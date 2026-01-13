@@ -15,11 +15,11 @@
   "author": "Anthropic Community",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anthropic-community/docmeta.git"
+    "url": "git+https://github.com/BRBCoffeeDebuff/DocMeta.git"
   },
-  "homepage": "https://github.com/anthropic-community/docmeta#readme",
+  "homepage": "https://github.com/BRBCoffeeDebuff/DocMeta#readme",
   "bugs": {
-    "url": "https://github.com/anthropic-community/docmeta/issues"
+    "url": "https://github.com/BRBCoffeeDebuff/DocMeta/issues"
   },
   "bin": {
     "docmeta": "bin/cli.js"
